@@ -156,3 +156,30 @@ export async function projectDirFor(cwd: string): Promise<string | null> {
   }
   return null
 }
+
+/**
+ * The tool call that spawned a subagent, read from the `agent-<id>.meta.json`
+ * sidecar Claude Code writes beside every subagent transcript. That id is the
+ * only link back to the parent session: a subagent's own parentUuid chain
+ * terminates inside its own file, so without this its changes can be labelled
+ * but never attributed to the prompt that caused them.
+ *
+ * Returns null whenever no usable link exists, which is a real case rather
+ * than an error: a workflow-nested subagent records `toolUseId: null`, and a
+ * sidecar may be absent, unreadable or malformed. Never throws, matching the
+ * never-fatal rule the rest of this module follows.
+ */
+export async function subagentToolUseId(transcriptPath: string): Promise<string | null> {
+  const sidecar = transcriptPath.replace(/\.jsonl$/, '.meta.json')
+  if (sidecar === transcriptPath) return null
+  try {
+    const file = Bun.file(sidecar)
+    if (!(await file.exists())) return null
+    const parsed: unknown = JSON.parse(await file.text())
+    if (parsed === null || typeof parsed !== 'object') return null
+    const id = (parsed as { toolUseId?: unknown }).toolUseId
+    return typeof id === 'string' && id !== '' ? id : null
+  } catch {
+    return null
+  }
+}

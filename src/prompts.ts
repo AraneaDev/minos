@@ -1,4 +1,4 @@
-import { isPromptRecord, promptText } from './records'
+import { isPromptRecord, promptText, toolUses } from './records'
 import type { Prompt, UnknownRecord } from './types'
 
 /** A corrupt transcript can point a record at itself. The walk is capped rather than trusted. */
@@ -13,11 +13,13 @@ export class PromptIndex {
   private readonly parents: Map<string, string | null>
   private readonly byUuid: Map<string, Prompt>
   private readonly order: Prompt[]
+  private readonly toolUseOwners: Map<string, string>
 
   constructor() {
     this.parents = new Map()
     this.byUuid = new Map()
     this.order = []
+    this.toolUseOwners = new Map()
   }
 
   /** Takes one record in transcript order. Safe to call for records of every type. */
@@ -25,6 +27,7 @@ export class PromptIndex {
     const uuid = typeof record.uuid === 'string' ? record.uuid : null
     if (uuid === null) return
     this.parents.set(uuid, typeof record.parentUuid === 'string' ? record.parentUuid : null)
+    for (const use of toolUses(record)) this.toolUseOwners.set(use.id, uuid)
 
     if (!isPromptRecord(record)) return
     const prompt: Prompt = {
@@ -51,6 +54,16 @@ export class PromptIndex {
       current = next
     }
     return null
+  }
+
+  /**
+   * The record that emitted a given tool call, or null when no record seen so
+   * far did. A subagent transcript names the call that spawned it, and this is
+   * what turns that name back into a place in the parent session's record
+   * graph, so the walk to a prompt can carry on across the file boundary.
+   */
+  recordForToolUse(id: string): string | null {
+    return this.toolUseOwners.get(id) ?? null
   }
 
   /** Every prompt, in the order it was typed. */

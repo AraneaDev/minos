@@ -14,6 +14,13 @@ interface Case {
   records: unknown[]
   /** Records for a second, subagent transcript, read after the main one. */
   subagentRecords?: unknown[]
+  /**
+   * The tool call the subagent's sidecar names as having spawned it. Set it to
+   * plant the link back to the parent session, or leave it undefined to plant
+   * a subagent with no sidecar at all, which is what a case checking that an
+   * unlinkable subagent stays unattributed needs.
+   */
+  subagentSpawnedBy?: string
   expect: (report: Report) => boolean
   /**
    * What to print when `expect` returns false. Defaults to a fixed summary of
@@ -139,6 +146,50 @@ const CASES: Case[] = [
     detail: (r) => ({ prompts: r.prompts.map((p) => p.id) }),
   },
   {
+    name: 'a subagent change is attributed to the prompt behind the call that spawned it',
+    records: [
+      prompt('u1', 'p1', 'default', null),
+      {
+        type: 'assistant', uuid: 'a1', parentUuid: 'u1', timestamp: '2026-09-07T19:01:00Z', isSidechain: false,
+        message: { content: [{ type: 'tool_use', id: 'toolu_SPAWN', name: 'Agent', input: {} }] },
+      },
+    ],
+    // parentUuid null, the shape a real subagent transcript's single root record has.
+    subagentRecords: [{ ...edit('sa1', 'ignored', '/repo/a.ts', 'x', 'y', true), parentUuid: null }],
+    subagentSpawnedBy: 'toolu_SPAWN',
+    // The subagent's own chain ends inside its own file, so this only resolves
+    // if the sidecar's tool call is matched back to a1 and the root grafted on.
+    // The label must stay subagent regardless: attribution says which prompt
+    // caused the change, never that its diff reached the terminal.
+    expect: (r) =>
+      r.unattributedCount === 0 &&
+      r.operations.length === 1 &&
+      r.operations[0]?.promptId === 'p1' &&
+      r.operations[0]?.attestation === 'subagent' &&
+      r.totals.subagent.files === 1 &&
+      r.totals.decided.files === 0,
+    detail: (r) => ({
+      unattributed: r.unattributedCount,
+      ops: r.operations.map((o) => ({ prompt: o.promptId, label: o.attestation })),
+    }),
+  },
+  {
+    name: 'a subagent with no sidecar to link it stays unattributed, and still counts as subagent',
+    records: [prompt('u1', 'p1', 'default', null)],
+    // parentUuid null, the shape a real subagent transcript's single root record has.
+    subagentRecords: [{ ...edit('sa1', 'ignored', '/repo/a.ts', 'x', 'y', true), parentUuid: null }],
+    // No subagentSpawnedBy, so no sidecar is written: the shape of a workflow
+    // nested subagent, whose sidecar records no spawning call at all.
+    expect: (r) =>
+      r.unattributedCount === 1 &&
+      r.operations[0]?.promptId === null &&
+      r.operations[0]?.attestation === 'subagent',
+    detail: (r) => ({
+      unattributed: r.unattributedCount,
+      ops: r.operations.map((o) => ({ prompt: o.promptId, label: o.attestation })),
+    }),
+  },
+  {
     name: 'operations are ordered by timestamp, not by which transcript was read first',
     records: [editAt('a1', 'u0', '/repo/order.ts', 'q', 'p', '2026-09-07T19:10:00Z')],
     // The main transcript is read first (and so observed first) even though this
@@ -241,6 +292,12 @@ async function runCase(dir: string, test: Case): Promise<boolean> {
     const subPath = join(dir, `${slug}-subagent.jsonl`)
     const subBody = test.subagentRecords.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n')
     await writeFile(subPath, subBody)
+    if (test.subagentSpawnedBy !== undefined) {
+      await writeFile(
+        subPath.replace(/\.jsonl$/, '.meta.json'),
+        JSON.stringify({ agentType: 'general-purpose', toolUseId: test.subagentSpawnedBy }),
+      )
+    }
     subagents.push(subPath)
   }
 

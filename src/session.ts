@@ -1,4 +1,5 @@
 import { Ledger } from './ledger'
+import { subagentToolUseId } from './paths'
 import { PromptIndex } from './prompts'
 import { findUndone } from './reverts'
 import { eachRecord } from './transcript'
@@ -108,9 +109,23 @@ export async function analyseSession(paths: { transcript: string; subagents: str
   const ledger = new Ledger()
   await eachRecord(paths.transcript, (r) => ledger.observe(r, prompts))
   for (const file of paths.subagents) {
+    // A subagent's own parentUuid chain terminates inside its own file, so on
+    // its own it resolves to no prompt at all. The sidecar names the call that
+    // spawned it, and that call sits on a record of the parent session, so
+    // grafting the subagent's root onto that record lets the ordinary walk
+    // carry on across the file boundary and reach the prompt behind it. A
+    // subagent with no recoverable link, which is what a workflow-nested one
+    // records, keeps its null parent and stays unattributed.
+    const toolUseId = await subagentToolUseId(file)
+    const spawnedBy = toolUseId === null ? null : prompts.recordForToolUse(toolUseId)
+
     const stats = await eachRecord(file, (r) => {
-      prompts.observe(r)
-      ledger.observe({ ...r, isSidechain: true }, prompts)
+      const graft = spawnedBy !== null && typeof r.parentUuid !== 'string'
+      // isSidechain is forced regardless: the diff never reached the terminal,
+      // whichever prompt turns out to have caused it.
+      const record = graft ? { ...r, isSidechain: true, parentUuid: spawnedBy } : { ...r, isSidechain: true }
+      prompts.observe(record)
+      ledger.observe(record, prompts)
     })
     skippedLines += stats.skipped
   }
