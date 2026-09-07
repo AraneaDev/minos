@@ -78,5 +78,13 @@ export function findUndone(file: string, ops: Operation[], base: string | null):
   // old -> new -> other -> old is reported as two overwrites, not as one revert.
   // Fixing this would require tracking cumulative content chains, deferred to v1.1.
 
+  // A sibling limitation: the confirm-guard above checks the whole file, not the
+  // position a change was introduced at, so a coincidental reappearance of the
+  // introduced text elsewhere in the final content (a duplicated literal, an
+  // unrelated line reusing the same token) can suppress a genuine finding.
+  // Position-scoped confirmation needs the file-history base the spec defers to
+  // v1.1; until then this is a live under-reporting risk, traded for closing the
+  // live over-reporting one the guard exists to fix.
+
   return found
 }
