@@ -1,6 +1,30 @@
-import { expect, test } from 'bun:test'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { main } from '../src/cli'
+import { encodeProjectSlug } from '../src/paths'
 import type { Attestation, Operation, OperationKind, Prompt, UnknownRecord } from '../src/types'
+
+// Since Task 13, `main` resolves a session against the real transcript store
+// (via resolveSession -> projectDirFor) whenever the command is not
+// "sessions". This repository itself has a real, on-disk session for its own
+// working directory, so a test that ran `main` without redirecting the store
+// would resolve that real session and print a real report into this test's
+// output. Every test below points CLAUDE_CONFIG_DIR at a throwaway, empty
+// directory instead, so `projectDirFor` always reports no match and the
+// commands below take their "no transcript found" branch deterministically.
+let configDir: string
+
+beforeEach(async () => {
+  configDir = await mkdtemp(join(tmpdir(), 'minos-cli-'))
+  process.env.CLAUDE_CONFIG_DIR = configDir
+})
+
+afterEach(async () => {
+  delete process.env.CLAUDE_CONFIG_DIR
+  await rm(configDir, { recursive: true, force: true })
+})
 
 test('an unknown command exits non-zero and names the commands that exist', async () => {
   const code = await main(['wat'])
@@ -9,9 +33,9 @@ test('an unknown command exits non-zero and names the commands that exist', asyn
 
 test('no arguments is the report command', async () => {
   const code = await main([])
-  // No session is resolvable inside the test environment, which is an
+  // No session is resolvable against the empty fake store, which is an
   // orderly failure rather than a crash.
-  expect([0, 1]).toContain(code)
+  expect(code).toBe(1)
 })
 
 test('a leading flag is treated as an argument to the default report command', async () => {
@@ -19,12 +43,75 @@ test('a leading flag is treated as an argument to the default report command', a
   // command stays "report" and the flag is passed through as an argument
   // rather than being rejected as an unknown command.
   const code = await main(['--verbose'])
-  expect([0, 1]).toContain(code)
+  expect(code).toBe(1)
 })
 
-test('a known command reports as not implemented yet', async () => {
+test('a known command reports no transcript found rather than crashing', async () => {
   const code = await main(['file', 'src/cli.ts'])
   expect(code).toBe(1)
+})
+
+// The tests above all take the "no transcript found" branch, since the fake
+// store is empty. The dispatch for `sessions` (which never resolves a
+// session) and for each command once a session *does* resolve is only
+// exercised by populating a fake project directory and pointing `--project`
+// at its cwd, still entirely inside the throwaway store.
+async function withFakeProject(cwd: string): Promise<void> {
+  const projectDir = join(configDir, 'projects', encodeProjectSlug(cwd))
+  await mkdir(projectDir, { recursive: true })
+  const record = {
+    type: 'user',
+    uuid: 'u1',
+    parentUuid: null,
+    promptId: 'p1',
+    permissionMode: 'default',
+    timestamp: '2026-09-07T10:00:00Z',
+    sessionId: 'sess-cli',
+    cwd,
+    gitBranch: 'main',
+    message: { content: 'do a thing' },
+  }
+  const change = {
+    type: 'assistant',
+    uuid: 'a1',
+    parentUuid: 'u1',
+    timestamp: '2026-09-07T10:01:00Z',
+    isSidechain: false,
+    message: { content: [{ type: 'tool_use', id: 't1', name: 'Write', input: { file_path: '/repo/x.ts', content: 'hi\n' } }] },
+  }
+  await writeFile(join(projectDir, 'sess-cli.jsonl'), [JSON.stringify(record), JSON.stringify(change)].join('\n'))
+}
+
+test('the sessions command lists sessions without going through resolveSession', async () => {
+  const cwd = '/fake/cli-sessions'
+  await withFakeProject(cwd)
+  const code = await main(['sessions', '--project', cwd, '--limit', '1'])
+  expect(code).toBe(0)
+})
+
+test('the report command (implicit and explicit) prints the resolved session\'s report', async () => {
+  const cwd = '/fake/cli-report'
+  await withFakeProject(cwd)
+  expect(await main(['--project', cwd])).toBe(0)
+  expect(await main(['report', '--project', cwd])).toBe(0)
+})
+
+test('the undone command dispatches once a session resolves', async () => {
+  const cwd = '/fake/cli-undone'
+  await withFakeProject(cwd)
+  expect(await main(['undone', '--project', cwd])).toBe(0)
+})
+
+test('the export command dispatches once a session resolves', async () => {
+  const cwd = '/fake/cli-export'
+  await withFakeProject(cwd)
+  expect(await main(['export', '--project', cwd])).toBe(0)
+})
+
+test('the file command dispatches once a session resolves, passing the target through', async () => {
+  const cwd = '/fake/cli-file'
+  await withFakeProject(cwd)
+  expect(await main(['file', 'x.ts', '--project', cwd])).toBe(0)
 })
 
 test('an operation and a prompt survive a JSON round trip unchanged', () => {
