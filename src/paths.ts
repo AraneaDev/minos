@@ -2,9 +2,14 @@ import { readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 
-// A first line comfortably fits in a few tens of kilobytes; this is generous
-// headroom without reading anywhere near a whole transcript into memory.
-const FIRST_LINE_BOUND = 64 * 1024
+// Sampled across every top-level transcript on this machine, the recorded cwd
+// never showed up past line 14, and the first 40 lines of a transcript ran up
+// to about 400KB where early lines carried a large tool result. 1MiB and 40
+// lines both give real margin over what was observed, while staying a small
+// slice of a transcript that can run to tens of megabytes: bounded, not a
+// whole-file read.
+const CWD_SCAN_BYTE_BOUND = 1024 * 1024
+const CWD_SCAN_MAX_LINES = 40
 
 /** Root of the Claude Code state directory. CLAUDE_CONFIG_DIR wins, which is also how tests point it elsewhere. */
 export function claudeHome(): string {
@@ -53,40 +58,60 @@ export async function subagentFiles(projectDir: string, sessionId: string): Prom
 }
 
 /**
- * The first line of a file, read without loading the rest of it into memory.
- * A bounded slice is read and only the text before the first newline is
- * returned; when no newline turns up inside that bound the file is treated as
- * unreadable for this purpose rather than read further.
+ * The cwd a transcript records, recovered without loading the whole file into
+ * memory. Real transcripts do not carry it on the first line: session-level
+ * records (last-prompt, mode, permission-mode, and the like) come first, so a
+ * bounded head of the file is read and parsed line by line, tolerating lines
+ * that are not JSON, until a record with a string `cwd` turns up or the bound
+ * runs out. Returns null when nothing is recovered within the bound, which
+ * covers both an unusually short transcript and one that could not be parsed
+ * at all; the two are indistinguishable from here and are handled identically
+ * by the caller.
  */
-async function firstLine(path: string): Promise<string | null> {
-  const text = await Bun.file(path).slice(0, FIRST_LINE_BOUND).text()
-  const end = text.indexOf('\n')
-  if (end === -1) return null
-  return text.slice(0, end)
+async function recordedCwd(path: string): Promise<string | null> {
+  const text = await Bun.file(path).slice(0, CWD_SCAN_BYTE_BOUND).text()
+  const lines = text.split('\n').slice(0, CWD_SCAN_MAX_LINES)
+  for (const line of lines) {
+    try {
+      const record = JSON.parse(line) as { cwd?: unknown }
+      if (typeof record.cwd === 'string') return record.cwd
+    } catch {}
+  }
+  return null
 }
 
 /**
- * The project directory for a working directory. Tries the encoded name first
- * and falls back to scanning every project directory for one whose first
- * transcript line records this cwd, because the encoding is a guess and a
- * wrong guess would report on somebody else's project without saying so.
+ * The project directory for a working directory. Tries the encoded name
+ * first, verifying it against the cwd recorded in its own transcript, and
+ * falls back to scanning every project directory for one whose transcript
+ * records this cwd, because the encoding is a guess and a wrong guess would
+ * report on somebody else's project without saying so.
+ *
+ * The two paths apply the recovered cwd differently. On the encoded guess,
+ * the directory name itself is evidence: if its transcript records a
+ * different cwd the guess is rejected, but if none is recoverable at all the
+ * guess is still accepted, since refusing it would make Minos report nothing
+ * on a legitimate, if short or unusual, transcript. On the fallback scan
+ * there is no such prior evidence, so only an exact match is accepted; a
+ * candidate with an unrecoverable cwd is skipped rather than guessed at.
  */
 export async function projectDirFor(cwd: string): Promise<string | null> {
   const root = join(claudeHome(), 'projects')
+
   const guess = join(root, encodeProjectSlug(cwd))
-  const files = await sessionFiles(guess)
-  if (files.length > 0) return guess
+  const guessFiles = await sessionFiles(guess)
+  if (guessFiles.length > 0) {
+    const recorded = await recordedCwd(guessFiles[0]!)
+    if (recorded === null || recorded === cwd) return guess
+  }
 
   const names = await readdir(root).catch(() => [] as string[])
   for (const name of names) {
     const candidate = join(root, name)
     const [first] = await sessionFiles(candidate)
     if (first === undefined) continue
-    const line = await firstLine(first)
-    if (line === null) continue
-    try {
-      if ((JSON.parse(line) as { cwd?: string }).cwd === cwd) return candidate
-    } catch {}
+    const recorded = await recordedCwd(first)
+    if (recorded === cwd) return candidate
   }
   return null
 }

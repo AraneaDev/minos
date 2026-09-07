@@ -101,27 +101,32 @@ test('projectDirFor returns the encoded directory when it exists', async () => {
   expect(found).toBe(projectDir)
 })
 
-test('projectDirFor falls back to the cwd recorded on the first line when the encoded guess misses', async () => {
+test('projectDirFor falls back to a project whose transcript records the cwd when the encoded guess misses', async () => {
   const cwd = '/root/renamed-project'
 
-  // A candidate whose first line has no newline within the bound: unreadable,
-  // so the scan must move past it rather than throwing.
-  const unreadableDir = join(root, 'projects', '-root-unreadable-first-line')
-  await mkdir(unreadableDir, { recursive: true })
-  await writeFile(join(unreadableDir, 'session-1.jsonl'), 'no newline in this whole file at all')
+  // A candidate with no parseable JSON anywhere in it. On the fallback scan
+  // (no prior evidence from the name) this must be skipped, not accepted.
+  const unparseableDir = join(root, 'projects', '-root-unparseable-transcript')
+  await mkdir(unparseableDir, { recursive: true })
+  await writeFile(join(unparseableDir, 'session-1.jsonl'), 'not json\nstill not json\n')
 
-  // A candidate whose first line is not JSON at all.
-  const malformedDir = join(root, 'projects', '-root-malformed-first-line')
-  await mkdir(malformedDir, { recursive: true })
-  await writeFile(join(malformedDir, 'session-1.jsonl'), 'not json\nmore content\n')
+  // A candidate that records a real but different cwd.
+  const differentCwdDir = join(root, 'projects', '-root-different-cwd')
+  await mkdir(differentCwdDir, { recursive: true })
+  await writeFile(join(differentCwdDir, 'session-1.jsonl'), `${JSON.stringify({ type: 'user', cwd: 'irrelevant' })}\n`)
 
   // The directory that actually matches, filed under a name the encoded
-  // guess would never produce for this cwd.
+  // guess would never produce for this cwd, with cwd recorded a few lines in
+  // as it is on a real transcript.
   const projectDir = join(root, 'projects', '-root-old-name-for-the-project')
   await mkdir(projectDir, { recursive: true })
   await writeFile(
     join(projectDir, 'session-1.jsonl'),
-    `${JSON.stringify({ type: 'user', cwd })}\n${JSON.stringify({ type: 'user', cwd: 'irrelevant' })}\n`,
+    [
+      JSON.stringify({ type: 'last-prompt' }),
+      JSON.stringify({ type: 'mode' }),
+      JSON.stringify({ type: 'user', cwd }),
+    ].join('\n') + '\n',
   )
 
   const found = await projectDirFor(cwd)
@@ -140,4 +145,58 @@ test('projectDirFor returns null when nothing matches', async () => {
   const found = await projectDirFor('/root/nowhere')
 
   expect(found).toBeNull()
+})
+
+test('projectDirFor finds a cwd recorded on a later line of the encoded guess, not just the first', async () => {
+  // As on a real transcript: session-level records come first, and cwd only
+  // shows up a few lines in.
+  const cwd = '/root/example-later-cwd'
+  const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+  await mkdir(projectDir, { recursive: true })
+  await writeFile(
+    join(projectDir, 'session-1.jsonl'),
+    [
+      JSON.stringify({ type: 'last-prompt' }),
+      JSON.stringify({ type: 'mode' }),
+      JSON.stringify({ type: 'permission-mode' }),
+      JSON.stringify({ type: 'user', cwd }),
+    ].join('\n') + '\n',
+  )
+
+  const found = await projectDirFor(cwd)
+
+  expect(found).toBe(projectDir)
+})
+
+test('projectDirFor rejects the encoded guess when its transcript records a different cwd', async () => {
+  // This is the failure the function exists to prevent: the encoded name
+  // happens to exist, but it belongs to a different project.
+  const cwd = '/root/actually-somebody-elses-project'
+  const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+  await mkdir(projectDir, { recursive: true })
+  await writeFile(
+    join(projectDir, 'session-1.jsonl'),
+    `${JSON.stringify({ type: 'user', cwd: '/root/a-completely-different-project' })}\n`,
+  )
+
+  const found = await projectDirFor(cwd)
+
+  expect(found).toBeNull()
+})
+
+test('projectDirFor accepts the encoded guess when no cwd is recoverable anywhere in its transcript', async () => {
+  // Refusing here would make Minos report nothing on a legitimate store just
+  // because a transcript happens to be short or unusual; the encoding having
+  // matched is itself evidence.
+  const cwd = '/root/no-cwd-anywhere'
+  const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+  await mkdir(projectDir, { recursive: true })
+  await writeFile(
+    join(projectDir, 'session-1.jsonl'),
+    [JSON.stringify({ type: 'last-prompt' }), JSON.stringify({ type: 'mode' })].join('\n') + '\n',
+  )
+
+  const found = await projectDirFor(cwd)
+
+  expect(found).toBe(projectDir)
 })
