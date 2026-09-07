@@ -39,3 +39,13 @@ test('the line an edit landed on is reported when the content is known', () => {
   const steps = replay([op({ oldString: 'third', newString: 'THIRD' })], 'first\nsecond\nthird\n')
   expect(steps[0]?.line).toBe(3)
 })
+
+test('an edit with $$ and $& in newString inserts them literally, not as special sequences', () => {
+  const result = applyOperation('cost', op({ oldString: 'cost', newString: '$$price$&' }))
+  expect(result).toBe('$$price$&')
+})
+
+test('replace_all with $$ and $& in newString inserts them literally, not as special sequences', () => {
+  const result = applyOperation('cost cost', op({ oldString: 'cost', newString: '$$price$&', replaceAll: true }))
+  expect(result).toBe('$$price$& $$price$&')
+})

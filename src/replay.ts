@@ -12,15 +12,17 @@ export interface ReplayStep {
  * Applies one operation the way Claude Code applied it: a write replaces
  * everything, an edit replaces the first occurrence unless replace_all is set.
  * Returns null when it cannot be applied, which is a fact to report rather than
- * a case to paper over.
+ * a case to paper over. The replacement is inserted literally, so dollar sequences
+ * like $$, $&, or $` are not interpreted as special patterns.
  */
 export function applyOperation(content: string | null, op: Operation): string | null {
   if (op.kind === 'write') return op.content
   if (content === null || op.oldString === null || op.newString === null) return null
   if (!content.includes(op.oldString)) return null
+  const newString = op.newString
   return op.replaceAll
-    ? content.replaceAll(op.oldString, op.newString)
-    : content.replace(op.oldString, op.newString)
+    ? content.replaceAll(op.oldString, () => newString)
+    : content.replace(op.oldString, () => newString)
 }
 
 /** The 1-based line an edit landed on, or null when the content is unknown. */
