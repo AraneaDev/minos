@@ -57,7 +57,7 @@ export function renderReport(report: SessionReport): string {
   const branch = sanitise(report.branch)
 
   out.push(`MINOS  ${id}  ${cwd}  ${branch}`)
-  out.push(`       ${report.prompts.length} prompts`)
+  out.push(`       ${plural(report.prompts.length, 'prompt', 'prompts')}`)
   out.push('')
 
   const added = report.totals.decided.added + report.totals.auto.added + report.totals.subagent.added

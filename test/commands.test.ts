@@ -1,12 +1,13 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { resolveSession, runReport } from '../src/commands/report'
 import { runUndone } from '../src/commands/undone'
 import { runFile } from '../src/commands/file'
 import { runSessions } from '../src/commands/sessions'
 import { runExport } from '../src/commands/export'
+import { main } from '../src/cli'
 import { encodeProjectSlug } from '../src/paths'
 import { FIXTURE_DIR } from '../scripts/make-fixtures'
 
@@ -46,9 +47,39 @@ test('file matches by trailing path segment, and reports zero when nothing match
   expect(noMatch).toBe('nonexistent.ts: 0 of its changes did not survive')
 })
 
+// Ruling A2: `endsWith` alone matches on raw characters, not path segments,
+// so a target of 'auth.ts' also matches a file named 'oauth.ts' with nothing
+// in the output to show it happened. A fresh two-file transcript is built
+// here (rather than reusing the shared fixture) so both an 'auth.ts' and an
+// 'oauth.ts' change exist side by side, each undone once.
+test('file matches on a path-segment boundary: auth.ts matches src/auth.ts but never src/oauth.ts', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'minos-file-boundary-'))
+  const transcript = join(dir, 'session.jsonl')
+  const records = [
+    { type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'default', timestamp: '2026-09-07T10:00:00Z', sessionId: 's', cwd: '/repo', gitBranch: 'main', message: { content: 'edit both' } },
+    { type: 'assistant', uuid: 'a1', parentUuid: 'u1', timestamp: '2026-09-07T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/repo/src/auth.ts', old_string: 'a', new_string: 'b' } }] } },
+    { type: 'assistant', uuid: 'a2', parentUuid: 'u1', timestamp: '2026-09-07T10:02:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't2', name: 'Edit', input: { file_path: '/repo/src/auth.ts', old_string: 'b', new_string: 'a' } }] } },
+    { type: 'assistant', uuid: 'a3', parentUuid: 'u1', timestamp: '2026-09-07T10:03:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't3', name: 'Edit', input: { file_path: '/repo/src/oauth.ts', old_string: 'x', new_string: 'y' } }] } },
+    { type: 'assistant', uuid: 'a4', parentUuid: 'u1', timestamp: '2026-09-07T10:04:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't4', name: 'Edit', input: { file_path: '/repo/src/oauth.ts', old_string: 'y', new_string: 'x' } }] } },
+  ]
+  await writeFile(transcript, records.map((r) => JSON.stringify(r)).join('\n'))
+
+  try {
+    const text = await runFile({ transcript, subagents: [] }, 'auth.ts')
+    expect(text.startsWith('auth.ts: 1 of its changes did not survive')).toBe(true)
+    expect(text).not.toContain('oauth')
+
+    // The exact full path must still match, since it satisfies equality directly.
+    const byFullPath = await runFile({ transcript, subagents: [] }, '/repo/src/oauth.ts')
+    expect(byFullPath.startsWith('/repo/src/oauth.ts: 1 of its changes did not survive')).toBe(true)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 // resolveSession and runSessions resolve against a real, on-disk project
 // store, so every test below points CLAUDE_CONFIG_DIR at a throwaway
-// directory rather than the real ~/.claude — otherwise they would read this
+// directory rather than the real ~/.claude. Otherwise they would read this
 // repository's own real session transcripts and print a real report into the
 // test output.
 describe('commands that resolve a session against the transcript store', () => {
@@ -168,5 +199,69 @@ describe('commands that resolve a session against the transcript store', () => {
 
     const limited = await runSessions(cwd, 1)
     expect(limited.split('\n')).toEqual([lines[1]])
+  })
+
+  // Ruling A1: a bad --limit must fail loudly rather than silently reporting
+  // on everything. `Number('abc')` is NaN, and `.slice(-NaN)` behaves like
+  // `.slice(0)`, so the unvalidated code returns every session; `Number('0')`
+  // and `Number('-1')` are both valid numbers that still make no sense as a
+  // count of rows to show. Each case here asserts the process both fails (a
+  // non-zero exit) and prints nothing to stdout, since printing a partial or
+  // full report alongside an error would still read as a report.
+  for (const badLimit of ['abc', '0', '-1']) {
+    test(`sessions rejects --limit ${badLimit} instead of silently ignoring it`, async () => {
+      const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+      const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+      try {
+        const code = await main(['sessions', '--limit', badLimit])
+        expect(code).not.toBe(0)
+        expect(logSpy).not.toHaveBeenCalled()
+        expect(errorSpy).toHaveBeenCalledTimes(1)
+        const [message] = errorSpy.mock.calls[0] as [string]
+        expect(message).toContain('--limit')
+        expect(message).toContain(badLimit)
+      } finally {
+        errorSpy.mockRestore()
+        logSpy.mockRestore()
+      }
+    })
+  }
+
+  test('sessions still accepts a real positive integer limit', async () => {
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const code = await main(['sessions', '--limit', '3'])
+      expect(code).toBe(0)
+      expect(errorSpy).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+      logSpy.mockRestore()
+    }
+  })
+
+  // Ruling A1: `minos file` with no path argument. `args[0] ?? ''` turns a
+  // missing argument into the empty string, and `"x".endsWith('')` is always
+  // true, so every undone change in the session is printed under a header
+  // with a blank filename instead of the command refusing to run. A session
+  // is planted here so the fix is proven to trigger on the missing argument
+  // itself, not merely on there being no session to report on.
+  test('file with no path argument prints usage and exits non-zero rather than matching every file', async () => {
+    const cwd = '/root/fake-project-file-usage'
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(join(projectDir, 'sess-usage.jsonl'), `${record({ cwd })}\n`)
+
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const code = await main(['file', '--project', cwd])
+      expect(code).not.toBe(0)
+      expect(logSpy).not.toHaveBeenCalled()
+      expect(errorSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      errorSpy.mockRestore()
+      logSpy.mockRestore()
+    }
   })
 })
