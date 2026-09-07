@@ -47,6 +47,24 @@ test('file matches by trailing path segment, and reports zero when nothing match
   expect(noMatch).toBe('nonexistent.ts: 0 of its changes did not survive')
 })
 
+// Finding 6: the spec calls minos file "one file's operation history in the
+// session", but the implementation filtered undone findings only. The
+// fixture's auth.ts has two Edit operations: 19:02 under default mode
+// (decided, prompt 1) and 20:11 under acceptEdits (auto, prompt 2). A fix
+// that still shows only the undone summary leaves both of these unnamed.
+test('file prints the file\'s full operation history, with time, kind, attestation and prompt', async () => {
+  const text = await runFile(paths, '/repo/src/auth.ts')
+  expect(text).toContain('19:02')
+  expect(text).toContain('20:11')
+  expect(text).toContain('edit')
+  expect(text).toContain('decided')
+  expect(text).toContain('auto')
+  expect(text).toContain('prompt 1')
+  expect(text).toContain('prompt 2')
+  // The undone summary named by the earlier test must still be present.
+  expect(text).toContain('1 of its changes did not survive')
+})
+
 // Ruling A2: `endsWith` alone matches on raw characters, not path segments,
 // so a target of 'auth.ts' also matches a file named 'oauth.ts' with nothing
 // in the output to show it happened. A fresh two-file transcript is built

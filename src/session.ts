@@ -58,6 +58,15 @@ export interface SessionReport {
    * the change go quietly missing from that table.
    */
   unattributedCount: number
+  /**
+   * Every operation across every file in the session, in timestamp order,
+   * exactly as `Ledger.operations` returns it. `minos file` filters this by
+   * path to print one file's full operation history; nothing else in the
+   * report needs it grouped by file, so it is kept flat here rather than as
+   * a `Map`, which `JSON.stringify` would silently reduce to `{}` and so
+   * would not survive `minos export`'s JSON round trip the way an array does.
+   */
+  operations: Operation[]
 }
 
 const lines = (text: string | null): number => {
@@ -153,7 +162,8 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     .filter((f) => f.added + f.removed > 0)
     .sort((a, b) => b.added + b.removed - (a.added + a.removed))
 
-  const unattributedCount = ledger.operations().filter((o) => o.promptId === null).length
+  const operations = ledger.operations()
+  const unattributedCount = operations.filter((o) => o.promptId === null).length
 
   return {
     sessionId,
@@ -168,5 +178,6 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     largestAuto,
     filesTouched: perFile.size,
     unattributedCount,
+    operations,
   }
 }

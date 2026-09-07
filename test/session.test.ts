@@ -36,6 +36,15 @@ test('a session is split by attestation and the undone change is found', async (
 
   // Every operation here descends from a resolvable prompt (p1 or p2).
   expect(report.unattributedCount).toBe(0)
+
+  // Finding 6: minos file needs one file's own operations, in order, which
+  // SessionReport did not carry at all before this. The fixture's auth.ts has
+  // two Edit operations, at 19:02 (decided) and 20:11 (auto), in that order.
+  const authOps = report.operations.filter((op) => op.file === '/repo/src/auth.ts')
+  expect(authOps.map((op) => [op.at, op.kind, op.attestation])).toEqual([
+    ['2026-09-07T19:02:00Z', 'edit', 'decided'],
+    ['2026-09-07T20:11:00Z', 'edit', 'auto'],
+  ])
 })
 
 test('the count of unparseable lines survives into the report', async () => {

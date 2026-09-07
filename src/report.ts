@@ -31,7 +31,7 @@ export const pathCol = (text: string, width: number): string =>
   text.length <= width ? `${pad(text, width)} ` : `${ELLIPSIS}${text.slice(-(width - 1))} `
 
 /** A count with its word in the right number, e.g. "1 file" against "3 files". */
-const plural = (n: number, singular: string, pluralWord: string): string => `${n} ${n === 1 ? singular : pluralWord}`
+export const plural = (n: number, singular: string, pluralWord: string): string => `${n} ${n === 1 ? singular : pluralWord}`
 
 /**
  * The prompt named for one side of a finding: "prompt N" when `promptId`
