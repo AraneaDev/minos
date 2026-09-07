@@ -264,3 +264,40 @@ test('the unattributed caveat says the table is above it, since that is where it
   expect(text).toContain('do not appear in the BY PROMPT table above')
   expect(text).not.toContain('do not appear in the BY PROMPT table below')
 })
+
+// Finding 5: `decided` prints the flat assertion "you were asked before it was
+// applied", but a standing allow rule such as Edit(src/**) can mean nothing
+// was ever put on screen under `default` mode. The spec requires one caveat
+// naming the allow rules currently in force, so a reader can see what would
+// move a decided row into auto, printed only when decided covers more than
+// zero files (the fixture's own session has exactly one).
+test('a caveat names the allow rules in force when decided covers at least one file', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  expect(report.totals.decided.files).toBeGreaterThan(0)
+  const text = renderReport(report, { allowRules: ['Edit(src/**)', 'Write(src/**)'] })
+  expect(text).toContain('Edit(src/**)')
+  expect(text).toContain('Write(src/**)')
+  expect(text.toLowerCase()).toContain('decided')
+  expect(text.toLowerCase()).toContain('right now')
+})
+
+test('the caveat still prints, without a rule list, when settings could not be read', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const text = renderReport(report, { allowRules: null })
+  expect(text.toLowerCase()).toContain('allow rule')
+  expect(text.toLowerCase()).toContain('could not')
+})
+
+test('no allow-rule caveat is printed when decided covers zero files', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const zeroDecided = { ...report, totals: { ...report.totals, decided: { files: 0, added: 0, removed: 0 } } }
+  const text = renderReport(zeroDecided, { allowRules: ['Edit(src/**)'] })
+  expect(text.toLowerCase()).not.toContain('allow rule')
+})
+
+test('an allow rule carrying an escape sequence is sanitised before it reaches the caveat', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const erase = '\x1b[2J'
+  const text = renderReport(report, { allowRules: [`Edit(src${erase}/**)`] })
+  expect(text).not.toContain(erase)
+})

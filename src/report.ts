@@ -66,8 +66,27 @@ const LARGEST_AUTO_LIMIT = 5
 /** Fixed display width of a quoted prompt, so the column after it lines up across rows. */
 const PROMPT_TEXT_WIDTH = 40
 
+/**
+ * What `renderReport` needs beyond the analysed session itself: data that is
+ * true right now rather than something the transcript carries, and so cannot
+ * live on `SessionReport`. Optional, and treated as unresolved when omitted,
+ * so every caller that built a `SessionReport` before this option existed
+ * still renders, with the caveat's own "could not be read" branch covering
+ * the gap rather than the caveat going missing outright.
+ */
+export interface RenderOptions {
+  /**
+   * The Edit/Write/NotebookEdit allow rules in force right now, read from
+   * settings at report time; null when no settings file could be read or
+   * parsed at all. These are the rules that would move a `decided` row into
+   * `auto`, and they reflect today's settings, not necessarily the settings
+   * in force when the session ran.
+   */
+  allowRules: string[] | null
+}
+
 /** Renders the whole report. Space-aligned, so the slash command prints it verbatim. */
-export function renderReport(report: SessionReport): string {
+export function renderReport(report: SessionReport, options?: RenderOptions): string {
   const out: string[] = []
   const id = report.sessionId === '' ? '(unknown)' : sanitise(report.sessionId).slice(0, 7)
   const cwd = sanitise(basename(report.cwd)) || '(unknown)'
@@ -142,6 +161,25 @@ export function renderReport(report: SessionReport): string {
     out.push(
       `  ${plural(report.unattributedCount, 'change', 'changes')} could not be attributed to a prompt. They are counted above but do not appear in the BY PROMPT table above.`,
     )
+  }
+
+  // `decided` is an inference from permission mode, not a recorded approval:
+  // a standing allow rule (Edit(src/**) and the like) can mean a `default`-mode
+  // turn never actually prompted anyone. This caveat only makes sense once
+  // some row is actually labelled `decided`, and it names the rules read from
+  // settings at report time, never the settings that were in force when the
+  // session ran, since only the former is ever recoverable.
+  if (report.totals.decided.files > 0) {
+    out.push(
+      '  decided is inferred from permission mode alone, not from a recorded approval; a standing allow rule can mean nothing was ever put on screen.',
+    )
+    const allowRules = options?.allowRules ?? null
+    if (allowRules === null) {
+      out.push('  The allow rules in force right now could not be read, so which ones would do that is not known here.')
+    } else {
+      const rulesText = allowRules.length > 0 ? allowRules.map(sanitise).join(', ') : '(none configured)'
+      out.push(`  Allow rules in force right now (not necessarily when this session ran): ${rulesText}`)
+    }
   }
 
   return out.join('\n')

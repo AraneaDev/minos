@@ -2,6 +2,7 @@ import { basename } from 'node:path'
 import { projectDirFor, sessionFiles, subagentFiles } from '../paths'
 import { renderReport } from '../report'
 import { analyseSession } from '../session'
+import { readAllowRules } from '../settings'
 
 /** The transcript and subagent files one command run reads. */
 export interface SessionPaths {
@@ -28,7 +29,12 @@ export async function resolveSession(options: { cwd: string; session: string | n
   return { transcript, subagents: await subagentFiles(dir, sessionId) }
 }
 
-/** The full report as text. */
+/**
+ * The full report as text. The allow rules that would move a `decided` row
+ * into `auto` are read alongside the session, from settings at report time,
+ * never from the transcript itself.
+ */
 export async function runReport(paths: SessionPaths): Promise<string> {
-  return renderReport(await analyseSession(paths))
+  const [report, allowRules] = await Promise.all([analyseSession(paths), readAllowRules()])
+  return renderReport(report, { allowRules })
 }
