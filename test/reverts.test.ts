@@ -51,3 +51,19 @@ test('detection still works with no base to replay from', () => {
   ], null)
   expect(found.map((f) => [f.kind, f.line])).toEqual([['reverted', null]])
 })
+
+test('a change that survives a later edit is not reported', () => {
+  const found = findUndone('/a.ts', [
+    op({ uuid: 'first', oldString: 'false', newString: 'true' }),
+    op({ uuid: 'second', oldString: 'if (isReady === true) { go() }', newString: 'if (isReady) { go() }' }),
+  ], 'const enabled = false\nif (isReady === true) { go() }\n')
+  expect(found).toEqual([])
+})
+
+test('a Write that still contains the added text is not reported as discarded', () => {
+  const found = findUndone('/a.ts', [
+    op({ uuid: 'first', oldString: 'old', newString: 'new' }),
+    op({ uuid: 'second', kind: 'write', content: 'still has new in it' }),
+  ], 'old')
+  expect(found).toEqual([])
+})
