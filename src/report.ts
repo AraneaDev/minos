@@ -1,5 +1,6 @@
 import { basename } from 'node:path'
 import type { SessionReport } from './session'
+import type { Prompt } from './types'
 
 // Prompt text and file paths come out of a transcript unchanged, and both are
 // printed into a terminal. C0, C1 and the bidi overrides are removed so a
@@ -31,6 +32,22 @@ export const pathCol = (text: string, width: number): string =>
 
 /** A count with its word in the right number, e.g. "1 file" against "3 files". */
 const plural = (n: number, singular: string, pluralWord: string): string => `${n} ${n === 1 ? singular : pluralWord}`
+
+/**
+ * The prompt named for one side of a finding: "prompt N" when `promptId`
+ * resolves against the session's own prompt list, `(unattributed)` otherwise
+ * (no promptId at all, or one that resolves to nothing, which is the common
+ * case for a subagent operation). Shared by every place a finding is
+ * printed, so `minos report`, `minos undone` and `minos file` never drift
+ * out of agreement on how an unresolved prompt reads.
+ */
+export function promptRef(prompts: Prompt[], promptId: string | null): string {
+  const found = promptId === null ? undefined : prompts.find((p) => p.id === promptId)
+  return found === undefined ? '(unattributed)' : `prompt ${found.index}`
+}
+
+/** Fixed display width of a `promptRef` value, so the text after it lines up across rows. */
+export const PROMPT_REF_WIDTH = 14
 
 /**
  * The "file(s)" word for a per-row file count, padded to the width of its
@@ -94,7 +111,9 @@ export function renderReport(report: SessionReport): string {
     const where = u.line === null ? u.file : `${u.file}:${u.line}`
     const introducedAt = sanitise(u.introduced.at.slice(11, 16))
     const undoneAt = sanitise(u.undoneBy.at.slice(11, 16))
-    out.push(`  ${pathCol(sanitise(where), 40)}${pad(u.kind, 13)}${introducedAt} to ${undoneAt}`)
+    const introducedRef = pad(promptRef(report.prompts, u.introduced.promptId), PROMPT_REF_WIDTH)
+    const undoneRef = pad(promptRef(report.prompts, u.undoneBy.promptId), PROMPT_REF_WIDTH)
+    out.push(`  ${pathCol(sanitise(where), 40)}${pad(u.kind, 13)}${introducedAt} ${introducedRef} to ${undoneAt} ${undoneRef}`)
   }
   out.push('')
 

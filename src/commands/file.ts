@@ -1,4 +1,4 @@
-import { sanitise } from '../report'
+import { PROMPT_REF_WIDTH, promptRef, sanitise } from '../report'
 import { analyseSession } from '../session'
 import type { SessionPaths } from './report'
 
@@ -24,7 +24,9 @@ export async function runFile(paths: SessionPaths, target: string): Promise<stri
     ...rows.map((u) => {
       const introducedAt = sanitise(u.introduced.at.slice(11, 16))
       const undoneAt = sanitise(u.undoneBy.at.slice(11, 16))
-      return `  ${u.kind.padEnd(13)}${introducedAt} to ${undoneAt}`
+      const introducedRef = promptRef(report.prompts, u.introduced.promptId).padEnd(PROMPT_REF_WIDTH)
+      const undoneRef = promptRef(report.prompts, u.undoneBy.promptId).padEnd(PROMPT_REF_WIDTH)
+      return `  ${u.kind.padEnd(13)}${introducedAt} ${introducedRef} to ${undoneAt} ${undoneRef}`
     }),
   ].join('\n')
 }

@@ -216,6 +216,46 @@ test('a long path in the UNDONE section still separates from the kind column', a
   expect(line ?? '').toMatch(/task-10-report\.md\s+discarded/)
 })
 
+// Finding 4: the spec and README both say a finding names both prompts, but
+// the shipped row only ever printed path, kind and two timestamps. The data
+// already exists on Operation.promptId and SessionReport.prompts; this test
+// plants one resolvable and one unresolvable promptId on the two sides of a
+// single finding, so a fix that names only one side, or neither, still fails.
+test('an UNDONE row names the prompt behind each side, and (unattributed) when there is none', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const undoneOp = (over: Partial<Operation>): Operation => ({
+    file: '/repo/src/named.ts',
+    kind: 'edit',
+    at: '2026-09-07T20:08:00Z',
+    uuid: 'u',
+    promptId: null,
+    attestation: 'auto',
+    oldString: null,
+    newString: null,
+    replaceAll: false,
+    content: null,
+    ...over,
+  })
+  const withNamedPrompts = {
+    ...report,
+    undone: [
+      {
+        file: '/repo/src/named.ts',
+        kind: 'overwritten' as const,
+        line: null,
+        // report's fixture prompt p1 is index 1 ("fix the login redirect").
+        introduced: undoneOp({ at: '2026-09-07T19:02:00Z', promptId: 'p1' }),
+        undoneBy: undoneOp({ at: '2026-09-07T20:11:00Z', promptId: null }),
+      },
+    ],
+  }
+  const text = renderReport(withNamedPrompts)
+  const line = text.split('\n').find((l) => l.includes('named.ts'))
+  expect(line).toBeDefined()
+  expect(line ?? '').toContain('prompt 1')
+  expect(line ?? '').toContain('(unattributed)')
+})
+
 // Defect 4: the caveat prints after the BY PROMPT table it refers to, so it
 // must say "above", not "below".
 test('the unattributed caveat says the table is above it, since that is where it prints', async () => {
