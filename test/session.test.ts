@@ -29,6 +29,13 @@ test('a session is split by attestation and the undone change is found', async (
     { file: '/repo/src/auth.ts', added: 1, removed: 1, promptIndex: 2 },
     { file: '/repo/src/mail.ts', added: 1, removed: 0, promptIndex: 2 },
   ])
+
+  // auth.ts is touched under both 'decided' and 'auto', so the per-label file
+  // counts (1 + 1 + 1 = 3) overcount the two distinct files actually touched.
+  expect(report.filesTouched).toBe(2)
+
+  // Every operation here descends from a resolvable prompt (p1 or p2).
+  expect(report.unattributedCount).toBe(0)
 })
 
 test('the count of unparseable lines survives into the report', async () => {
@@ -48,6 +55,10 @@ test('a subagent transcript is forced sidechain regardless of its own flag, and 
 
   // session.jsonl parses cleanly; the one skipped line lives in subagent.jsonl.
   expect(report.skippedLines).toBe(1)
+
+  // subagent.jsonl's one change (sa1) has parentUuid: null and precedes no
+  // prompt of its own, so it resolves to no prompt at all: promptId is null.
+  expect(report.unattributedCount).toBe(1)
 })
 
 test('a trailing newline terminates the last line rather than starting an empty one', async () => {

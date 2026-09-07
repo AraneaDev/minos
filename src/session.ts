@@ -41,6 +41,23 @@ export interface SessionReport {
    * likewise never put to the user as a decision.
    */
   largestAuto: FileTotals[]
+  /**
+   * The count of distinct files touched by any operation, regardless of
+   * label. The three per-label file counts in `totals` are not mutually
+   * exclusive: a file edited once under `decided` and once under `auto`
+   * appears in both counts, so their sum overcounts. This is the true count
+   * for the headline.
+   */
+  filesTouched: number
+  /**
+   * Operations whose `promptId` could not be resolved to a prompt. Such a
+   * change still lands in `totals` and, if undone, in the full `undone`
+   * list, but it matches no row in `byPrompt` (which filters by promptId)
+   * and no per-prompt count in `undone` (its introducing operation's empty
+   * key matches no real prompt id). The report must say so rather than let
+   * the change go quietly missing from that table.
+   */
+  unattributedCount: number
 }
 
 const lines = (text: string | null): number => {
@@ -136,6 +153,8 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     .filter((f) => f.added + f.removed > 0)
     .sort((a, b) => b.added + b.removed - (a.added + a.removed))
 
+  const unattributedCount = ledger.operations().filter((o) => o.promptId === null).length
+
   return {
     sessionId,
     cwd,
@@ -147,5 +166,7 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     skippedLines,
     byPrompt,
     largestAuto,
+    filesTouched: perFile.size,
+    unattributedCount,
   }
 }
