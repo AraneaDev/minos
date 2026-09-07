@@ -26,7 +26,7 @@ const ELLIPSIS = '…'
  * the tail of a path (the file itself) identifies it better than the leading
  * directories do.
  */
-const pathCol = (text: string, width: number): string =>
+export const pathCol = (text: string, width: number): string =>
   text.length <= width ? `${pad(text, width)} ` : `${ELLIPSIS}${text.slice(-(width - 1))} `
 
 /** A count with its word in the right number, e.g. "1 file" against "3 files". */

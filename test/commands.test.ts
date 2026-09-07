@@ -77,6 +77,53 @@ test('file matches on a path-segment boundary: auth.ts matches src/auth.ts but n
   }
 })
 
+// Finding 2: runUndone and runFile printed `u.introduced.at` and `u.undoneBy.at`
+// raw and unsliced, so a crafted timestamp field carrying an escape sequence or
+// a bidi override reached the terminal unsanitised, unlike renderReport which
+// slices and sanitises the same fields. Escapes are written here (\x1b[2J, the
+// U+202E override) rather than pasted as literal control bytes.
+test('runUndone sanitises escape sequences and bidi overrides carried in a timestamp', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'minos-undone-escape-'))
+  const transcript = join(dir, 'session.jsonl')
+  const erase = '\x1b[2J'
+  const rtl = '‮'
+  const records = [
+    { type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'default', timestamp: '2026-09-07T10:00:00Z', sessionId: 's', cwd: '/repo', gitBranch: 'main', message: { content: 'edit' } },
+    { type: 'assistant', uuid: 'a1', parentUuid: 'u1', timestamp: `2026-09-07T10:01:00Z${erase}`, isSidechain: false, message: { content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/repo/a.ts', old_string: 'x', new_string: 'y' } }] } },
+    { type: 'assistant', uuid: 'a2', parentUuid: 'u1', timestamp: `2026-09-07T10:02:00Z${rtl}`, isSidechain: false, message: { content: [{ type: 'tool_use', id: 't2', name: 'Edit', input: { file_path: '/repo/a.ts', old_string: 'y', new_string: 'x' } }] } },
+  ]
+  await writeFile(transcript, records.map((r) => JSON.stringify(r)).join('\n'))
+  try {
+    const text = await runUndone({ transcript, subagents: [] })
+    expect(text).toContain('reverted')
+    expect(text).not.toContain(erase)
+    expect(text).not.toContain(rtl)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('runFile sanitises escape sequences and bidi overrides carried in a timestamp', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'minos-file-escape-'))
+  const transcript = join(dir, 'session.jsonl')
+  const erase = '\x1b[2J'
+  const rtl = '‮'
+  const records = [
+    { type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'default', timestamp: '2026-09-07T10:00:00Z', sessionId: 's', cwd: '/repo', gitBranch: 'main', message: { content: 'edit' } },
+    { type: 'assistant', uuid: 'a1', parentUuid: 'u1', timestamp: `2026-09-07T10:01:00Z${erase}`, isSidechain: false, message: { content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/repo/a.ts', old_string: 'x', new_string: 'y' } }] } },
+    { type: 'assistant', uuid: 'a2', parentUuid: 'u1', timestamp: `2026-09-07T10:02:00Z${rtl}`, isSidechain: false, message: { content: [{ type: 'tool_use', id: 't2', name: 'Edit', input: { file_path: '/repo/a.ts', old_string: 'y', new_string: 'x' } }] } },
+  ]
+  await writeFile(transcript, records.map((r) => JSON.stringify(r)).join('\n'))
+  try {
+    const text = await runFile({ transcript, subagents: [] }, 'a.ts')
+    expect(text).toContain('reverted')
+    expect(text).not.toContain(erase)
+    expect(text).not.toContain(rtl)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 // resolveSession and runSessions resolve against a real, on-disk project
 // store, so every test below points CLAUDE_CONFIG_DIR at a throwaway
 // directory rather than the real ~/.claude. Otherwise they would read this

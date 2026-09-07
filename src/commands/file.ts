@@ -19,5 +19,12 @@ export async function runFile(paths: SessionPaths, target: string): Promise<stri
   const report = await analyseSession(paths)
   const rows = report.undone.filter((u) => matchesTarget(u.file, target))
   const header = `${sanitise(target)}: ${rows.length} of its changes did not survive`
-  return [header, ...rows.map((u) => `  ${u.kind.padEnd(13)}${u.introduced.at} to ${u.undoneBy.at}`)].join('\n')
+  return [
+    header,
+    ...rows.map((u) => {
+      const introducedAt = sanitise(u.introduced.at.slice(11, 16))
+      const undoneAt = sanitise(u.undoneBy.at.slice(11, 16))
+      return `  ${u.kind.padEnd(13)}${introducedAt} to ${undoneAt}`
+    }),
+  ].join('\n')
 }
