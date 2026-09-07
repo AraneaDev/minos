@@ -161,6 +161,34 @@ describe('commands that resolve a session against the transcript store', () => {
     expect(text).toBe('minos: no transcripts for /root/nothing-here')
   })
 
+  // Finding 1: runSessions passed `subagents: []` to every row's analyseSession
+  // call, so a session with real subagent work always reported "subagent 0" and
+  // an undercounted "undone", indistinguishable from a session with no subagent
+  // work at all. This plants a session whose only change sits inside a subagent
+  // transcript, so a fix that forgets to resolve subagentFiles for each row
+  // (not just for resolveSession's single session) still reports "subagent 0".
+  test('sessions reports a non-zero subagent count when the session has a subagent transcript', async () => {
+    const cwd = '/root/fake-project-sessions-subagent'
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+
+    const session = [
+      { type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'default', timestamp: '2026-09-07T10:00:00Z', sessionId: 'sess-sub', cwd, gitBranch: 'main', message: { content: 'do a thing' } },
+    ]
+    await writeFile(join(projectDir, 'sess-sub.jsonl'), session.map((r) => JSON.stringify(r)).join('\n'))
+
+    const subagentsDir = join(projectDir, 'sess-sub', 'subagents')
+    await mkdir(subagentsDir, { recursive: true })
+    const subagentChange = {
+      type: 'assistant', uuid: 'sa1', parentUuid: null, timestamp: '2026-09-07T10:01:00Z', isSidechain: false,
+      message: { content: [{ type: 'tool_use', id: 'st1', name: 'Write', input: { file_path: '/repo/sub.ts', content: 'hi\n' } }] },
+    }
+    await writeFile(join(subagentsDir, 'agent-1.jsonl'), JSON.stringify(subagentChange))
+
+    const text = await runSessions(cwd, 10)
+    expect(text).toBe('sess-sub  decided 0  auto 0  subagent 1  undone 0')
+  })
+
   // runSessions: the listing branch, plus the limit. Two sessions are
   // written with distinct, explicit content so both the per-label counts and
   // the oldest-first ordering are pinned to real ledger output rather than
