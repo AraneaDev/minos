@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { analyseSession } from '../src/session'
 import type { FileTotals, PromptTotals } from '../src/session'
@@ -26,7 +27,7 @@ test('a session is split by attestation and the undone change is found', async (
   const largestAuto: FileTotals[] = report.largestAuto
   expect(largestAuto).toEqual([
     { file: '/repo/src/auth.ts', added: 1, removed: 1, promptIndex: 2 },
-    { file: '/repo/src/mail.ts', added: 2, removed: 0, promptIndex: 2 },
+    { file: '/repo/src/mail.ts', added: 1, removed: 0, promptIndex: 2 },
   ])
 })
 
@@ -47,4 +48,36 @@ test('a subagent transcript is forced sidechain regardless of its own flag, and 
 
   // session.jsonl parses cleanly; the one skipped line lives in subagent.jsonl.
   expect(report.skippedLines).toBe(1)
+})
+
+test('a trailing newline terminates the last line rather than starting an empty one', async () => {
+  const path = join(FIXTURE_DIR, 'lines-boundary.jsonl')
+  const records = [
+    {
+      type: 'assistant',
+      uuid: 'ba1',
+      parentUuid: null,
+      timestamp: '2026-09-07T22:00:00Z',
+      isSidechain: false,
+      message: { content: [{ type: 'tool_use', id: 'bt1', name: 'Write', input: { file_path: '/repo/src/with-newline.txt', content: 'a\nb\n' } }] },
+    },
+    {
+      type: 'assistant',
+      uuid: 'ba2',
+      parentUuid: null,
+      timestamp: '2026-09-07T22:01:00Z',
+      isSidechain: false,
+      message: { content: [{ type: 'tool_use', id: 'bt2', name: 'Write', input: { file_path: '/repo/src/no-newline.txt', content: 'a\nb' } }] },
+    },
+  ]
+  await writeFile(path, records.map((r) => JSON.stringify(r)).join('\n'))
+
+  const report = await analyseSession({ transcript: path, subagents: [] })
+  const byFile = new Map(report.largestAuto.map((f) => [f.file, f]))
+
+  // Both are two-line files. 'a\nb\n' ends with a trailing newline that
+  // terminates the second line rather than starting a third, empty one, so
+  // it must count the same as 'a\nb', not one more.
+  expect(byFile.get('/repo/src/with-newline.txt')).toMatchObject({ added: 2, removed: 0 })
+  expect(byFile.get('/repo/src/no-newline.txt')).toMatchObject({ added: 2, removed: 0 })
 })

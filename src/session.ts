@@ -33,10 +33,21 @@ export interface SessionReport {
   unrecognisedModes: string[]
   skippedLines: number
   byPrompt: PromptTotals[]
+  /**
+   * The files with the most change applied without asking, ranked by lines
+   * touched. The name refers to the report's "applied without asking"
+   * section, not to the `auto` attestation alone: it deliberately includes
+   * `subagent` operations too, since a change made inside a subagent was
+   * likewise never put to the user as a decision.
+   */
   largestAuto: FileTotals[]
 }
 
-const lines = (text: string | null): number => (text === null || text === '' ? 0 : text.split('\n').length)
+const lines = (text: string | null): number => {
+  if (text === null || text === '') return 0
+  const body = text.endsWith('\n') ? text.slice(0, -1) : text
+  return body.split('\n').length
+}
 
 /** Lines an operation added and removed. A write counts its whole content as added. */
 function delta(op: Operation): { added: number; removed: number } {
