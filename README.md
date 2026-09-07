@@ -11,7 +11,8 @@
 [![Language](https://img.shields.io/github/languages/top/AraneaDev/minos)](https://github.com/AraneaDev/minos)
 [![Last commit](https://img.shields.io/github/last-commit/AraneaDev/minos?label=last%20commit)](https://github.com/AraneaDev/minos/commits/main)
 [![Conventional Commits](https://img.shields.io/badge/commits-conventional-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/)
-[![Status](https://img.shields.io/badge/status-design-blue)](#status)
+[![Status](https://img.shields.io/badge/status-pre--release-orange)](#status)
+[![Tests](https://img.shields.io/badge/tests-101%20passing-brightgreen)](#development)
 
 </div>
 
@@ -36,9 +37,9 @@ happened before you installed it.
 
 <a id="status"></a>
 
-> **Status:** design. Nothing is implemented yet. The agreed design is in
-> [`docs/spec.md`](docs/spec.md) in the working tree, and this README describes what is being
-> built rather than what runs today.
+> **Status:** pre-release. Minos is **not yet published to npm**. Install from the source
+> repository. It requires [Bun](https://bun.sh/) 1.1 or newer and a Claude Code transcript
+> store at `~/.claude/projects`.
 
 ---
 
@@ -90,8 +91,8 @@ changed twice. It is that what you asked for in prompt 4 did not survive prompt 
 minos report [--session <id>] [--project <path>]   the default; latest session for this directory
 minos file <path>                                  one file's operation history in the session
 minos undone                                       the changes that did not survive, on their own
-minos sessions [--since <date>] [--limit <n>]      sessions with headline counts, to pick one
-minos export [--json]                              the ledger as data
+minos sessions [--limit <n>] [--project <path>]    sessions with headline counts, to pick one
+minos export                                       the ledger as data, JSON
 ```
 
 In Claude Code, `/minos` prints the report for the session you are in.
