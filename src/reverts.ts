@@ -18,9 +18,17 @@ export interface Undone {
  * Finds the changes a later operation ended. Detection is string-level, so it
  * works without a base to replay from; the replay only supplies the line
  * number. Each introducing operation is reported at most once, by the first
- * operation that ended it. When base is supplied, candidates are confirmed
- * against the reconstructed final content to avoid false positives from
- * incidental substring matches.
+ * operation that ended it.
+ *
+ * A candidate is confirmed against the reconstructed final content whenever
+ * that content is recoverable, to avoid false positives from incidental
+ * substring matches. That recovery does not require a supplied base:
+ * `applyOperation` returns a `Write`'s own content unconditionally, so
+ * `replay` recovers real content from the first `Write` onward even when
+ * `base` is null. Only a file with neither a supplied base nor any `Write` in
+ * its operations has no content to confirm against, and for that file this
+ * false positive still stands (the file-history work the spec defers to
+ * v1.1).
  */
 export function findUndone(file: string, ops: Operation[], base: string | null): Undone[] {
   const steps: ReplayStep[] = replay(ops, base)
@@ -48,10 +56,11 @@ export function findUndone(file: string, ops: Operation[], base: string | null):
       if (later.oldString === null || !later.oldString.includes(added)) continue
       if (later.newString?.includes(added) === true) continue
 
-      // When base is supplied and we have reconstructed content, confirm the candidate
-      // against the final state. If added still exists, the change survived, so skip this
-      // candidate and continue searching for a real undoing.
-      if (base !== null && finalContent !== null && finalContent.includes(added)) continue
+      // Whenever the final content was recovered (from a supplied base, or from a
+      // later Write even without one), confirm the candidate against it. If added
+      // still exists, the change survived, so skip this candidate and continue
+      // searching for a real undoing.
+      if (finalContent !== null && finalContent.includes(added)) continue
 
       const reverted = later.newString === introduced.oldString && later.oldString === introduced.newString
       found.push({

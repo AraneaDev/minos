@@ -68,7 +68,7 @@ was done and then undone before you ever saw it.
 | Class | What it means |
 |---|---|
 | `decided` | The turn ran in `default` or `plan` mode, so Claude Code stopped and asked before applying it |
-| `auto` | The turn ran under `acceptEdits` or `bypassPermissions`. Applied with no prompt of any kind |
+| `auto` | The turn ran under `acceptEdits`, `bypassPermissions`, or `auto`, the mode most real changes run under. Applied with no prompt of any kind |
 | `subagent` | Applied inside a subagent. No diff reached your terminal in any form |
 
 `subagent` wins over the other two, because even in `default` mode a subagent's edits are not
