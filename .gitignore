@@ -1,0 +1,17 @@
+node_modules/
+bin/
+dist/
+coverage/
+test/fixtures/
+.env
+*.log
+.momus/
+/.superpowers/
+/docs/superpowers/
+CLAUDE.md
+
+# The spec and the plan are working notes for building Minos, not reference
+# material for using it. They live in docs/ so they are easy to find while the
+# work is on, and stay out of the history a reader of this repository sees.
+/docs/spec.md
+/docs/plan.md

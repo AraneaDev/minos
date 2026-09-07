@@ -1,0 +1,35 @@
+{
+  "name": "minos",
+  "version": "0.0.1",
+  "description": "Reports what an agent session actually changed, and how much of it was never put to you as a decision",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "minos": "./src/cli.ts"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "scripts": {
+    "test": "bun run scripts/make-fixtures.ts && bun test",
+    "test:coverage": "bun run scripts/make-fixtures.ts && bun test --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:docs": "markdownlint-cli2",
+    "knip": "knip",
+    "fp": "bun run scripts/fp-harness.ts",
+    "check": "bun run lint && bun run lint:docs && bun run typecheck && bun run knip && bun run test:coverage",
+    "prepare": "git config core.hooksPath .githooks || true"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "latest",
+    "eslint": "^10.9.1",
+    "eslint-plugin-jsdoc": "^64.2.1",
+    "knip": "^6.32.2",
+    "markdownlint-cli2": "^0.23.2",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.68.0"
+  }
+}

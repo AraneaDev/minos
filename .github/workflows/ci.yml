@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # Linux and macOS both run the suite. Minos reads transcript files under
+    # ~/.claude and resolves paths out of them, so what bites here is platform
+    # behaviour rather than Bun: path handling, home directory resolution, and
+    # line endings inside the captured strings. Windows is deliberately absent.
+    # Nothing has been tested there and the README does not claim it.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Report the platform
+        # Recorded on every run because path resolution and home directory
+        # lookup differ between the two. When a test fails on one platform only,
+        # this is the first thing to read.
+        run: |
+          echo "uname:  $(uname -s)"
+          echo "bun:    $(bun --version)"
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        # `bun run test` rather than `bun test`: the script generates the
+        # synthetic transcript fixtures first, and they are gitignored.
+        run: bun run test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: eslint
+        run: bun run lint
+
+      - name: markdownlint
+        run: bun run lint:docs
+
+      - name: knip
+        # Catches the dead export a refactor leaves behind. Minos is a pipeline
+        # of small single-purpose modules, which is exactly where an unused
+        # export survives unnoticed.
+        run: bun run knip
+
+  attribution:
+    # The ledger and the attestation are the whole product, and a regression in
+    # either is silent: the report still prints, with the wrong changes under
+    # the wrong label. The harness builds transcripts with a known answer, one
+    # per attestation class and one per revert shape, and exits non-zero when
+    # what Minos reports is not what was planted.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Attribution harness
+        run: bun run fp
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Validate JSON
+        run: |
+          for f in .claude-plugin/plugin.json package.json; do
+            jq -e . "$f" > /dev/null && echo "$f ok"
+          done
+
+      - name: Slash commands point at files that exist
+        # Guards the failure mode a rename introduces: the command file still
+        # renders but names an entrypoint that is no longer there, and the
+        # command silently does nothing. A sibling plugin logged 198 silent
+        # exit-127 hook runs before anyone noticed.
+        run: |
+          status=0
+          while read -r path; do
+            if [ -f "$path" ]; then
+              echo "ok   $path"
+            else
+              echo "MISSING $path"
+              status=1
+            fi
+          done < <(grep -ho '\${CLAUDE_PLUGIN_ROOT}/[^"]*\.ts' commands/*.md | sed 's|${CLAUDE_PLUGIN_ROOT}/||' | sort -u)
+          exit $status
+
+      - name: Versions agree across the manifests
+        run: |
+          plugin=$(jq -r .version .claude-plugin/plugin.json)
+          pkg=$(jq -r .version package.json)
+          echo "plugin.json: $plugin / package.json: $pkg"
+          [ "$plugin" = "$pkg" ]

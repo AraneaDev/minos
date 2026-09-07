@@ -1,0 +1,22 @@
+{
+  "name": "minos",
+  "displayName": "Minos",
+  "version": "0.0.1",
+  "description": "Reports what a session actually changed, and separates the changes you were asked about from the ones that were applied without asking.",
+  "author": {
+    "name": "AraneaDev",
+    "url": "https://github.com/AraneaDev"
+  },
+  "homepage": "https://github.com/AraneaDev/minos",
+  "repository": "https://github.com/AraneaDev/minos",
+  "license": "MIT",
+  "keywords": [
+    "review",
+    "diff",
+    "audit",
+    "transcript",
+    "permissions",
+    "subagents",
+    "local-first"
+  ]
+}
