@@ -27,20 +27,24 @@ test('a known command reports as not implemented yet', async () => {
   expect(code).toBe(1)
 })
 
-test('the transcript vocabulary describes one operation and one prompt', () => {
-  // Genuinely typed test data: this is what pins src/types.ts as used rather
-  // than a dead file, and it is honest because the shapes below are exactly
-  // what a real transcript record narrows down to.
-  const attestation: Attestation = 'decided'
-  const kind: OperationKind = 'edit'
-
+test('an operation and a prompt survive a JSON round trip unchanged', () => {
+  // Operation and Prompt are exactly what Task 13's `minos export --json`
+  // serialises and a reader parses back. This catches a real regression: if
+  // either interface ever gains a field JSON cannot carry unchanged (a
+  // Date, a function, an undefined), JSON.parse(JSON.stringify(x)) drops or
+  // mangles it and the deep-equal checks below fail. The `as unknown as
+  // UnknownRecord` casts exist only because Operation and Prompt are
+  // interfaces without an index signature, which TypeScript never treats as
+  // assignable to Record<string, unknown> even when every field is
+  // structurally compatible; the runtime comparison bun:test performs is
+  // unaffected by the cast.
   const operation: Operation = {
     file: 'src/example.ts',
-    kind,
+    kind: 'edit',
     at: '2026-09-07T00:00:00.000Z',
     uuid: 'op-uuid-1',
     promptId: 'prompt-uuid-1',
-    attestation,
+    attestation: 'decided',
     oldString: 'before',
     newString: 'after',
     replaceAll: false,
@@ -56,9 +60,20 @@ test('the transcript vocabulary describes one operation and one prompt', () => {
     permissionMode: 'default',
   }
 
-  const raw: UnknownRecord = { type: 'assistant', message: { content: [] } }
+  const roundTrippedOperation: UnknownRecord = JSON.parse(JSON.stringify(operation))
+  const roundTrippedPrompt: UnknownRecord = JSON.parse(JSON.stringify(prompt))
 
-  expect(operation.promptId).toBe(prompt.id)
-  expect(operation.attestation).toBe('decided')
-  expect(typeof raw.type).toBe('string')
+  expect(roundTrippedOperation).toEqual(operation as unknown as UnknownRecord)
+  expect(roundTrippedPrompt).toEqual(prompt as unknown as UnknownRecord)
 })
+
+// The two lines below are not runtime assertions: tsc is the checker, and
+// `bun run check` runs tsc against every file under test/. Renaming or
+// removing a member of Attestation or OperationKind in src/types.ts makes
+// one of these literal arrays fail to satisfy its union type, so this file
+// stops compiling. `void` marks them deliberately unread at runtime without
+// renaming them to dodge the unused-vars lint rule.
+const ATTESTATIONS = ['decided', 'auto', 'subagent'] as const satisfies readonly Attestation[]
+const OPERATION_KINDS = ['write', 'edit', 'notebook'] as const satisfies readonly OperationKind[]
+void ATTESTATIONS
+void OPERATION_KINDS
