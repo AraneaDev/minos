@@ -14,6 +14,16 @@ export function sanitise(text: string): string {
 const pad = (text: string, width: number): string => text.padEnd(width)
 const num = (value: number, width: number): string => String(value).padStart(width)
 
+/** A count with its word in the right number, e.g. "1 file" against "3 files". */
+const plural = (n: number, singular: string, pluralWord: string): string => `${n} ${n === 1 ? singular : pluralWord}`
+
+/**
+ * The "file(s)" word for a per-row file count, padded to the width of its
+ * longer form. Rows in the same table can disagree on singular/plural, and a
+ * varying word width would carry the columns after it out of alignment.
+ */
+const filesWord = (n: number): string => pad(n === 1 ? 'file' : 'files', 5)
+
 /**
  * How many files the "applied without asking" section names. The spec's own
  * illustrative report shows two; five gives a reader a useful sample of what
@@ -21,18 +31,24 @@ const num = (value: number, width: number): string => String(value).padStart(wid
  */
 const LARGEST_AUTO_LIMIT = 5
 
+/** Fixed display width of a quoted prompt, so the column after it lines up across rows. */
+const PROMPT_TEXT_WIDTH = 40
+
 /** Renders the whole report. Space-aligned, so the slash command prints it verbatim. */
 export function renderReport(report: SessionReport): string {
   const out: string[] = []
-  const id = report.sessionId === '' ? '(unknown)' : report.sessionId.slice(0, 7)
+  const id = report.sessionId === '' ? '(unknown)' : sanitise(report.sessionId).slice(0, 7)
+  const cwd = sanitise(basename(report.cwd)) || '(unknown)'
+  const branch = sanitise(report.branch)
 
-  out.push(`MINOS  ${id}  ${basename(report.cwd) || '(unknown)'}  ${report.branch}`)
+  out.push(`MINOS  ${id}  ${cwd}  ${branch}`)
   out.push(`       ${report.prompts.length} prompts`)
   out.push('')
 
   const added = report.totals.decided.added + report.totals.auto.added + report.totals.subagent.added
   const removed = report.totals.decided.removed + report.totals.auto.removed + report.totals.subagent.removed
-  out.push(`CHANGED  ${report.filesTouched} files, +${added} / -${removed}`)
+  out.push(`CHANGED  ${plural(report.filesTouched, 'file', 'files')}, +${added} / -${removed}`)
+  out.push('  (a file changed under more than one label below is counted in each; the rows overlap by design)')
   out.push('')
 
   const legend = {
@@ -42,13 +58,13 @@ export function renderReport(report: SessionReport): string {
   } as const
   for (const label of ['decided', 'auto', 'subagent'] as const) {
     const t = report.totals[label]
-    out.push(`  ${pad(label, 12)}${num(t.files, 3)} files  ${num(t.added, 5)} ${num(-t.removed, 5)}   ${legend[label]}`)
+    out.push(`  ${pad(label, 12)}${num(t.files, 3)} ${filesWord(t.files)}  +${num(t.added, 4)}  -${num(t.removed, 4)}   ${legend[label]}`)
   }
   out.push('')
 
   if (report.largestAuto.length > 0) {
     const shown = report.largestAuto.slice(0, LARGEST_AUTO_LIMIT)
-    out.push(`APPLIED WITHOUT ASKING  ${report.largestAuto.length} files. The largest:`)
+    out.push(`APPLIED WITHOUT ASKING  ${plural(report.largestAuto.length, 'file', 'files')}. The largest:`)
     out.push('')
     for (const f of shown) {
       const where = f.promptIndex === null ? '(unattributed)' : `prompt ${f.promptIndex}`
@@ -57,31 +73,40 @@ export function renderReport(report: SessionReport): string {
     out.push('')
   }
 
-  out.push(`UNDONE  ${report.undone.length} changes did not survive the session`)
+  out.push(`UNDONE  ${plural(report.undone.length, 'change', 'changes')} did not survive the session`)
   out.push('')
   for (const u of report.undone) {
     const where = u.line === null ? u.file : `${u.file}:${u.line}`
-    out.push(`  ${pad(sanitise(where), 40)}${pad(u.kind, 13)}${u.introduced.at.slice(11, 16)} to ${u.undoneBy.at.slice(11, 16)}`)
+    const introducedAt = sanitise(u.introduced.at.slice(11, 16))
+    const undoneAt = sanitise(u.undoneBy.at.slice(11, 16))
+    out.push(`  ${pad(sanitise(where), 40)}${pad(u.kind, 13)}${introducedAt} to ${undoneAt}`)
   }
   out.push('')
 
   out.push('BY PROMPT')
   out.push('')
+  out.push(
+    `  ${pad('#', 3)}  ${pad('when', 5)}  ${pad('files', 9)}  ${pad('+/-', 12)}  ${pad('asked for', PROMPT_TEXT_WIDTH + 2)}  ${pad('undone', 6)}`,
+  )
   for (const p of report.byPrompt) {
-    const text = sanitise(p.prompt.text).slice(0, 40)
-    out.push(`  ${num(p.prompt.index, 3)}  ${num(p.files, 3)} files  ${num(p.added, 5)} ${num(-p.removed, 5)}  "${text}"  undone ${p.undone}`)
+    const when = sanitise(p.prompt.at.slice(11, 16))
+    const text = sanitise(p.prompt.text).slice(0, PROMPT_TEXT_WIDTH)
+    const quoted = pad(`"${text}"`, PROMPT_TEXT_WIDTH + 2)
+    const filesCol = `${num(p.files, 3)} ${filesWord(p.files)}`
+    const deltaCol = `+${num(p.added, 4)}  -${num(p.removed, 4)}`
+    out.push(`  ${num(p.prompt.index, 3)}  ${pad(when, 5)}  ${filesCol}  ${deltaCol}  ${quoted}  ${num(p.undone, 6)}`)
   }
   out.push('')
 
   if (report.unrecognisedModes.length > 0) {
-    out.push(`  Permission modes this build does not know, counted as auto: ${report.unrecognisedModes.join(', ')}`)
+    out.push(`  Permission modes this build does not know, counted as auto: ${report.unrecognisedModes.map(sanitise).join(', ')}`)
   }
   if (report.skippedLines > 0) {
     out.push(`  ${report.skippedLines} transcript lines did not parse and were skipped.`)
   }
   if (report.unattributedCount > 0) {
     out.push(
-      `  ${report.unattributedCount} changes could not be attributed to a prompt. They are counted above but do not appear in the BY PROMPT table below.`,
+      `  ${plural(report.unattributedCount, 'change', 'changes')} could not be attributed to a prompt. They are counted above but do not appear in the BY PROMPT table below.`,
     )
   }
 
