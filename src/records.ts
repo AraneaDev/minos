@@ -11,12 +11,25 @@ const asObject = (value: unknown): UnknownRecord | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as UnknownRecord) : null
 
 /**
- * True for a prompt the user typed. `permissionMode` is the discriminator: it
- * appears on typed prompts and not on the tool results and injected context
- * that share the `user` type.
+ * True for a prompt the user actually supplied, told apart from a
+ * system-injected `<task-notification>` or reminder. `type === 'user'`,
+ * `isMeta !== true` and a string `permissionMode` are necessary but not
+ * sufficient: an injected record satisfies all three exactly as a typed
+ * prompt does, and on a real transcript this is not a rare edge case (one
+ * session measured had 44 injected records against a single typed prompt).
+ *
+ * `promptSource` is the discriminator that actually separates them, checked
+ * against the full local corpus (2,908 prompt-shaped records across 172
+ * transcripts) with no counter-example: `system` is exclusively injected,
+ * while `typed`, `suggestion_accepted`, `queued` and `sdk` are all genuinely
+ * user-supplied (typed text, an accepted suggestion, a prompt queued while
+ * busy, and one submitted by the SDK on the user's behalf, respectively).
+ * Only the explicit `'system'` value is excluded; a transcript predating this
+ * field carries no `promptSource` at all, and must keep counting as a prompt
+ * exactly as it did before this field existed.
  */
 export function isPromptRecord(r: UnknownRecord): boolean {
-  return r.type === 'user' && r.isMeta !== true && typeof r.permissionMode === 'string'
+  return r.type === 'user' && r.isMeta !== true && typeof r.permissionMode === 'string' && r.promptSource !== 'system'
 }
 
 /** True for a record carrying an assistant turn. */

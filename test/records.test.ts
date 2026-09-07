@@ -32,6 +32,30 @@ test('a typed prompt is told apart from an injected user record', () => {
   expect(isPromptRecord(metaPrompt)).toBe(false)
 })
 
+// A <task-notification> or system reminder shares type 'user', isMeta !== true
+// and a string permissionMode with a real prompt. promptSource is the only
+// field that tells them apart in the corpus, so it must be checked too.
+test('a system-injected record is not counted as a prompt, even though it looks like one', () => {
+  expect(isPromptRecord({ ...prompt, promptSource: 'system' })).toBe(false)
+})
+
+test('a typed record is still accepted with promptSource present', () => {
+  expect(isPromptRecord({ ...prompt, promptSource: 'typed' })).toBe(true)
+})
+
+test('suggestion_accepted, queued and sdk are all genuinely user-supplied', () => {
+  expect(isPromptRecord({ ...prompt, promptSource: 'suggestion_accepted' })).toBe(true)
+  expect(isPromptRecord({ ...prompt, promptSource: 'queued' })).toBe(true)
+  expect(isPromptRecord({ ...prompt, promptSource: 'sdk' })).toBe(true)
+})
+
+// A transcript predating the promptSource field must keep working exactly as
+// it does today: an absent promptSource must still count as a prompt.
+test('a record with no promptSource at all is still accepted', () => {
+  expect(isPromptRecord(prompt)).toBe(true)
+  expect('promptSource' in prompt).toBe(false)
+})
+
 test('prompt text is read out of either content shape', () => {
   expect(promptText(prompt)).toBe('fix the login redirect')
   expect(promptText({ ...prompt, message: { content: [{ type: 'text', text: 'hello' }] } })).toBe('hello')

@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { analyseSession } from '../src/session'
 import { renderReport, sanitise } from '../src/report'
 import { FIXTURE_DIR } from '../scripts/make-fixtures'
+import type { Operation } from '../src/types'
 
 test('control and bidi characters never reach the terminal', () => {
   expect(sanitise('fix the‮ redirect')).toBe('fix the redirect')
@@ -158,4 +159,68 @@ test('CHANGED explains that the rows below it can overlap', async () => {
   const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
   const text = renderReport(report)
   expect(text.toLowerCase()).toContain('overlap')
+})
+
+// Defect 3: a real repository path can run well past the column's padding
+// width. Without a guaranteed separator, the next column's text runs
+// straight into the path with no space at all, e.g.
+// "...task-12-report.md+ 537  -   0   (unattributed)".
+test('a file path long enough to overflow its column still separates from the next column', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const longPath = '/root/minos/.superpowers/sdd/plan/task-12-report.md'
+  const withLongPath = {
+    ...report,
+    largestAuto: [{ file: longPath, added: 537, removed: 0, promptIndex: null }],
+  }
+  const text = renderReport(withLongPath)
+  const line = text.split('\n').find((l) => l.includes('task-12-report.md'))
+  expect(line).toBeDefined()
+  // Whatever comes after the path column (the '+' of the added count) must be
+  // separated from the path by whitespace, not glued straight onto it.
+  expect(line ?? '').not.toMatch(/task-12-report\.md\+/)
+  expect(line ?? '').toMatch(/task-12-report\.md\s+\+/)
+})
+
+test('a long path in the UNDONE section still separates from the kind column', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const longPath = '/root/minos/.superpowers/sdd/plan/task-10-report.md'
+  const undoneOp = (over: Partial<Operation>): Operation => ({
+    file: longPath,
+    kind: 'edit',
+    at: '2026-09-07T20:08:00Z',
+    uuid: 'u',
+    promptId: null,
+    attestation: 'auto',
+    oldString: null,
+    newString: null,
+    replaceAll: false,
+    content: null,
+    ...over,
+  })
+  const withLongPath = {
+    ...report,
+    undone: [
+      {
+        file: longPath,
+        kind: 'discarded' as const,
+        line: null,
+        introduced: undoneOp({ at: '2026-09-07T20:08:00Z' }),
+        undoneBy: undoneOp({ at: '2026-09-07T20:44:00Z' }),
+      },
+    ],
+  }
+  const text = renderReport(withLongPath)
+  const line = text.split('\n').find((l) => l.includes('task-10-report.md'))
+  expect(line).toBeDefined()
+  expect(line ?? '').not.toMatch(/task-10-report\.mddiscarded/)
+  expect(line ?? '').toMatch(/task-10-report\.md\s+discarded/)
+})
+
+// Defect 4: the caveat prints after the BY PROMPT table it refers to, so it
+// must say "above", not "below".
+test('the unattributed caveat says the table is above it, since that is where it prints', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const text = renderReport({ ...report, unattributedCount: 3 })
+  expect(text).toContain('do not appear in the BY PROMPT table above')
+  expect(text).not.toContain('do not appear in the BY PROMPT table below')
 })

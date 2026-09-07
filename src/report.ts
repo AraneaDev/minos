@@ -14,6 +14,21 @@ export function sanitise(text: string): string {
 const pad = (text: string, width: number): string => text.padEnd(width)
 const num = (value: number, width: number): string => String(value).padStart(width)
 
+/** Leads a truncated path so the reader can see it was cut, not the whole thing. */
+const ELLIPSIS = '…'
+
+/**
+ * Renders a path-like column of a fixed width, followed by a single
+ * guaranteed separator space. A real repository path routinely runs past a
+ * column's padding width; `pad` alone leaves nothing between it and whatever
+ * prints next, so the two run together with no space at all. A path longer
+ * than `width` is truncated from the front, with a leading ellipsis, because
+ * the tail of a path (the file itself) identifies it better than the leading
+ * directories do.
+ */
+const pathCol = (text: string, width: number): string =>
+  text.length <= width ? `${pad(text, width)} ` : `${ELLIPSIS}${text.slice(-(width - 1))} `
+
 /** A count with its word in the right number, e.g. "1 file" against "3 files". */
 const plural = (n: number, singular: string, pluralWord: string): string => `${n} ${n === 1 ? singular : pluralWord}`
 
@@ -68,7 +83,7 @@ export function renderReport(report: SessionReport): string {
     out.push('')
     for (const f of shown) {
       const where = f.promptIndex === null ? '(unattributed)' : `prompt ${f.promptIndex}`
-      out.push(`  ${pad(sanitise(f.file), 30)}+${num(f.added, 4)}  -${num(f.removed, 4)}   ${where}`)
+      out.push(`  ${pathCol(sanitise(f.file), 30)}+${num(f.added, 4)}  -${num(f.removed, 4)}   ${where}`)
     }
     out.push('')
   }
@@ -79,7 +94,7 @@ export function renderReport(report: SessionReport): string {
     const where = u.line === null ? u.file : `${u.file}:${u.line}`
     const introducedAt = sanitise(u.introduced.at.slice(11, 16))
     const undoneAt = sanitise(u.undoneBy.at.slice(11, 16))
-    out.push(`  ${pad(sanitise(where), 40)}${pad(u.kind, 13)}${introducedAt} to ${undoneAt}`)
+    out.push(`  ${pathCol(sanitise(where), 40)}${pad(u.kind, 13)}${introducedAt} to ${undoneAt}`)
   }
   out.push('')
 
@@ -106,7 +121,7 @@ export function renderReport(report: SessionReport): string {
   }
   if (report.unattributedCount > 0) {
     out.push(
-      `  ${plural(report.unattributedCount, 'change', 'changes')} could not be attributed to a prompt. They are counted above but do not appear in the BY PROMPT table below.`,
+      `  ${plural(report.unattributedCount, 'change', 'changes')} could not be attributed to a prompt. They are counted above but do not appear in the BY PROMPT table above.`,
     )
   }
 
