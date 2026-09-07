@@ -8,6 +8,21 @@ const COMMANDS = ['report', 'file', 'undone', 'sessions', 'export'] as const
 
 const FLAG_NAMES = ['project', 'session', 'limit'] as const
 
+/**
+ * Usage text for `--help`/`-h`, naming the five real commands and only the
+ * flags each one actually accepts. `--since` and `--json` are named in the
+ * spec's illustrative command surface but implemented nowhere in this CLI,
+ * so they are deliberately absent here rather than promising a flag that
+ * would silently do nothing.
+ */
+const USAGE = `minos: reports what a Claude Code session changed, and which of it was ever put to you as a decision.
+
+  minos report [--session <id>] [--project <path>]   the default; latest session for the cwd
+  minos file <path> [--session <id>] [--project <path>]   one file's operation history in the session
+  minos undone [--session <id>] [--project <path>]   the undone changes on their own
+  minos sessions [--limit <n>] [--project <path>]     sessions with headline counts, to pick one
+  minos export [--session <id>] [--project <path>]    the ledger as data`
+
 const flag = (argv: string[], name: string): string | null => {
   const at = argv.indexOf(`--${name}`)
   return at === -1 ? null : argv[at + 1] ?? null
@@ -49,6 +64,15 @@ function parsePositiveInt(value: string): number | null {
 
 /** Entry point. Returns the exit code rather than calling exit, so it is testable. */
 export async function main(argv: string[]): Promise<number> {
+  // Checked before any command dispatch: a leading flag is not a recognised
+  // command name, so without this it falls through to the default `report`
+  // command and either prints a real report or "no transcript found",
+  // neither of which is what someone asking for help wants to see.
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log(USAGE)
+    return 0
+  }
+
   const [first, ...rest] = argv
   const named = first !== undefined && !first.startsWith('-') && (COMMANDS as readonly string[]).includes(first)
   const command = named ? (first as (typeof COMMANDS)[number]) : 'report'

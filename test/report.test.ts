@@ -161,6 +161,23 @@ test('CHANGED explains that the rows below it can overlap', async () => {
   expect(text.toLowerCase()).toContain('overlap')
 })
 
+// Finding 7: the +/- figures print in `git diff --stat` shape but are not
+// diff lines: an Edit counts its whole old and new strings and a Write
+// counts its whole content with zero removed, so the report must say what
+// they count, in the same style as the existing overlap note right below
+// CHANGED.
+test('CHANGED explains that the +/- figures are not diff lines', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const text = renderReport(report)
+  const lines = text.split('\n')
+  const changedIndex = lines.findIndex((l) => l.startsWith('CHANGED'))
+  expect(changedIndex).toBeGreaterThan(-1)
+  // The note belongs near CHANGED, alongside the existing overlap note, not
+  // buried somewhere unrelated further down the report.
+  const nearby = lines.slice(changedIndex, changedIndex + 4).join('\n').toLowerCase()
+  expect(nearby).toContain('not diff lines')
+})
+
 // Defect 3: a real repository path can run well past the column's padding
 // width. Without a guaranteed separator, the next column's text runs
 // straight into the path with no space at all, e.g.
@@ -263,6 +280,18 @@ test('the unattributed caveat says the table is above it, since that is where it
   const text = renderReport({ ...report, unattributedCount: 3 })
   expect(text).toContain('do not appear in the BY PROMPT table above')
   expect(text).not.toContain('do not appear in the BY PROMPT table below')
+})
+
+// Finding 7: undoneByPrompt keys on `promptId ?? ''`, so an undone finding
+// whose introducing operation has no promptId (the common case for subagent
+// work) never lands in any real prompt's row: BY PROMPT's undone column can
+// sum to zero while UNDONE reports many. The existing unattributed caveat is
+// the natural place to say so, since it already fires under the same
+// condition (unattributedCount > 0) that produces this gap.
+test('the unattributed caveat also names the gap in the undone column', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const text = renderReport({ ...report, unattributedCount: 3 })
+  expect(text.toLowerCase()).toContain('undone column')
 })
 
 // Finding 5: `decided` prints the flat assertion "you were asked before it was

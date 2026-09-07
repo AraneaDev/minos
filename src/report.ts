@@ -100,6 +100,7 @@ export function renderReport(report: SessionReport, options?: RenderOptions): st
   const removed = report.totals.decided.removed + report.totals.auto.removed + report.totals.subagent.removed
   out.push(`CHANGED  ${plural(report.filesTouched, 'file', 'files')}, +${added} / -${removed}`)
   out.push('  (a file changed under more than one label below is counted in each; the rows overlap by design)')
+  out.push('  (+/- are not diff lines: an Edit counts its whole old and new strings, a Write counts its whole content with 0 removed)')
   out.push('')
 
   const legend = {
@@ -159,7 +160,7 @@ export function renderReport(report: SessionReport, options?: RenderOptions): st
   }
   if (report.unattributedCount > 0) {
     out.push(
-      `  ${plural(report.unattributedCount, 'change', 'changes')} could not be attributed to a prompt. They are counted above but do not appear in the BY PROMPT table above.`,
+      `  ${plural(report.unattributedCount, 'change', 'changes')} could not be attributed to a prompt. They are counted above but do not appear in the BY PROMPT table above, and an unattributed undone change does not appear in that table's undone column either.`,
     )
   }
 

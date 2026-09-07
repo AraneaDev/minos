@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { main } from '../src/cli'
 import { encodeProjectSlug } from '../src/paths'
 import type { Attestation, Operation, OperationKind, Prompt, UnknownRecord } from '../src/types'
@@ -30,6 +30,32 @@ test('an unknown command exits non-zero and names the commands that exist', asyn
   const code = await main(['wat'])
   expect(code).toBe(2)
 })
+
+// Finding 7: `minos --help` fell through to the default report command,
+// since a leading flag is not a recognised command name and so was treated
+// as an argument to `report`. Real transcripts in this throwaway store are
+// none, so a fall-through would print "no transcript found" or a report,
+// never usage text; either way it would not name all five commands.
+for (const helpFlag of ['--help', '-h']) {
+  test(`main [${helpFlag}] prints usage naming every command instead of falling through to report`, async () => {
+    const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const code = await main([helpFlag])
+      expect(code).toBe(0)
+      expect(logSpy).toHaveBeenCalledTimes(1)
+      const [usage] = logSpy.mock.calls[0] as [string]
+      for (const command of ['report', 'file', 'undone', 'sessions', 'export']) {
+        expect(usage).toContain(`minos ${command}`)
+      }
+      // Real flags only: --since and --json do not exist anywhere in this CLI.
+      expect(usage).not.toContain('--since')
+      expect(usage).not.toContain('--json')
+      expect(usage).not.toContain('MINOS')
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+}
 
 test('no arguments is the report command', async () => {
   const code = await main([])

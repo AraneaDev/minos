@@ -40,9 +40,11 @@ jobs:
         run: bun run typecheck
 
       - name: Test
-        # `bun run test` rather than `bun test`: the script generates the
-        # synthetic transcript fixtures first, and they are gitignored.
-        run: bun run test
+        # `bun run test:coverage` rather than `bun test`: the script generates
+        # the synthetic transcript fixtures first (gitignored), and it is the
+        # coverage-checking variant, so the 90%-lines-and-functions floor in
+        # bunfig.toml is actually enforced here rather than only locally.
+        run: bun run test:coverage
 
   lint:
     runs-on: ubuntu-latest
