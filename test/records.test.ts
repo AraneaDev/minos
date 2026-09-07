@@ -16,9 +16,20 @@ const toolResult = {
   message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] },
 }
 
+// This shape occurs in a real store: isMeta + permissionMode both present.
+// The isMeta guard prevents it from being counted as a prompt.
+const metaPrompt = {
+  type: 'user',
+  uuid: 'u3',
+  isMeta: true,
+  permissionMode: 'default',
+  message: { role: 'user', content: 'injected context, not typed by anyone' },
+}
+
 test('a typed prompt is told apart from an injected user record', () => {
   expect(isPromptRecord(prompt)).toBe(true)
   expect(isPromptRecord(toolResult)).toBe(false)
+  expect(isPromptRecord(metaPrompt)).toBe(false)
 })
 
 test('prompt text is read out of either content shape', () => {
