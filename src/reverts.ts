@@ -47,6 +47,13 @@ export function findUndone(file: string, ops: Operation[], base: string | null):
 
       if (later.kind === 'write') {
         if (later.content?.includes(added) === true) continue
+        // The immediate write does not carry the added text, but a later
+        // operation might still restore it (a further Write bringing the
+        // content back, an Edit reintroducing it): the same confirm-guard the
+        // reverted/overwritten branch below applies, checked here too, rather
+        // than reporting this write as the one that ended it before knowing
+        // whether anything after it brought the change back.
+        if (finalContent !== null && finalContent.includes(added)) continue
         // A Write with null content defaults to treating the change as discarded.
         // This is safe: if content is unknown, we cannot confirm survival, so report cautiously.
         found.push({ file, kind: 'discarded', line: steps[i]?.line ?? null, introduced, undoneBy: later })
