@@ -10,9 +10,15 @@ const MAX_HOPS = 10_000
  * so nothing here matches prose against file names.
  */
 export class PromptIndex {
-  private readonly parents = new Map<string, string | null>()
-  private readonly byUuid = new Map<string, Prompt>()
-  private readonly order: Prompt[] = []
+  private readonly parents: Map<string, string | null>
+  private readonly byUuid: Map<string, Prompt>
+  private readonly order: Prompt[]
+
+  constructor() {
+    this.parents = new Map()
+    this.byUuid = new Map()
+    this.order = []
+  }
 
   /** Takes one record in transcript order. Safe to call for records of every type. */
   observe(record: UnknownRecord): void {
