@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -30,10 +30,43 @@ export function fileHistoryDir(sessionId: string): string {
   return join(claudeHome(), 'file-history', sessionId)
 }
 
-/** Session transcripts in a project directory, newest last. */
+/**
+ * A file's modification time, or a sentinel that sorts before every real
+ * timestamp when it cannot be read (removed between the readdir that found
+ * it and here, a permissions problem, ...). A session whose mtime cannot be
+ * read must never be mistaken for the most recently active one, so it sorts
+ * as the oldest instead of the read throwing.
+ */
+async function mtimeMs(path: string): Promise<number> {
+  try {
+    return (await stat(path)).mtimeMs
+  } catch {
+    return -Infinity
+  }
+}
+
+/**
+ * Session transcripts in a project directory, ordered oldest to newest by
+ * modification time, so the most recently active session is always the last
+ * element. Session filenames are UUIDs, which carry no chronological
+ * information of their own, so the ordering comes from `stat` rather than a
+ * lexicographic sort of the names; a project directory holds at most a few
+ * tens of sessions, so statting each one costs nothing. Names are sorted
+ * first and the mtime sort applied on top of that stable, so two sessions
+ * that share an mtime, or one whose mtime could not be read, fall back to
+ * name order between themselves rather than an arbitrary one. A missing
+ * directory yields no files rather than throwing.
+ */
 export async function sessionFiles(projectDir: string): Promise<string[]> {
   const names = await readdir(projectDir).catch(() => [] as string[])
-  return names.filter((n) => n.endsWith('.jsonl')).sort().map((n) => join(projectDir, n))
+  const jsonlNames = names.filter((n) => n.endsWith('.jsonl')).sort()
+  const withMtimes = await Promise.all(
+    jsonlNames.map(async (n) => {
+      const path = join(projectDir, n)
+      return { path, mtime: await mtimeMs(path) }
+    }),
+  )
+  return withMtimes.sort((a, b) => a.mtime - b.mtime).map((f) => f.path)
 }
 
 /**
@@ -66,10 +99,18 @@ export async function subagentFiles(projectDir: string, sessionId: string): Prom
  * runs out. Returns null when nothing is recovered within the bound, which
  * covers both an unusually short transcript and one that could not be parsed
  * at all; the two are indistinguishable from here and are handled identically
- * by the caller.
+ * by the caller. The read itself is never fatal either: a file that vanishes
+ * between the readdir that found it and this read (session pruning, a
+ * concurrent store cleanup, any other I/O failure) is treated the same way,
+ * rather than rejecting out of this function and crashing the lookup.
  */
 async function recordedCwd(path: string): Promise<string | null> {
-  const text = await Bun.file(path).slice(0, CWD_SCAN_BYTE_BOUND).text()
+  let text: string
+  try {
+    text = await Bun.file(path).slice(0, CWD_SCAN_BYTE_BOUND).text()
+  } catch {
+    return null
+  }
   const lines = text.split('\n').slice(0, CWD_SCAN_MAX_LINES)
   for (const line of lines) {
     try {

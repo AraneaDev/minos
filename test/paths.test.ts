@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'bun:test'
@@ -44,7 +44,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-test('sessionFiles returns only .jsonl files, sorted, with full paths', async () => {
+test('sessionFiles returns only .jsonl files, with full paths', async () => {
   const projectDir = join(root, 'projects', '-root-example')
   await mkdir(projectDir, { recursive: true })
   await writeFile(join(projectDir, 'b.jsonl'), '')
@@ -53,13 +53,36 @@ test('sessionFiles returns only .jsonl files, sorted, with full paths', async ()
 
   const files = await sessionFiles(projectDir)
 
-  expect(files).toEqual([join(projectDir, 'a.jsonl'), join(projectDir, 'b.jsonl')])
+  // Order is covered by its own test below; this one is purely about the
+  // .jsonl filter and full-path shape.
+  expect([...files].sort()).toEqual([join(projectDir, 'a.jsonl'), join(projectDir, 'b.jsonl')].sort())
 })
 
 test('sessionFiles returns an empty array for a directory that does not exist', async () => {
   const files = await sessionFiles(join(root, 'projects', 'does-not-exist'))
 
   expect(files).toEqual([])
+})
+
+test('sessionFiles orders sessions by modification time, oldest first, even when that disagrees with name order', async () => {
+  // Session filenames are UUIDs and carry no chronological meaning, so this
+  // pins ordering to mtime rather than to a lexicographic sort of the names.
+  // Names are picked so the two orders disagree, and mtimes are set
+  // explicitly so the test does not depend on write-order timing.
+  const projectDir = join(root, 'projects', '-root-example')
+  await mkdir(projectDir, { recursive: true })
+  const olderPath = join(projectDir, 'zzz-actually-oldest.jsonl')
+  const newerPath = join(projectDir, 'aaa-actually-newest.jsonl')
+  await writeFile(olderPath, '')
+  await writeFile(newerPath, '')
+  const earlier = new Date('2024-01-01T00:00:00Z')
+  const later = new Date('2024-06-01T00:00:00Z')
+  await utimes(olderPath, earlier, earlier)
+  await utimes(newerPath, later, later)
+
+  const files = await sessionFiles(projectDir)
+
+  expect(files).toEqual([olderPath, newerPath])
 })
 
 test('subagentFiles finds a direct agent transcript and a nested workflow one, and skips the journal', async () => {
@@ -199,4 +222,27 @@ test('projectDirFor accepts the encoded guess when no cwd is recoverable anywher
   const found = await projectDirFor(cwd)
 
   expect(found).toBe(projectDir)
+})
+
+test('projectDirFor does not throw when a candidate transcript cannot be read as a file, and keeps scanning', async () => {
+  const cwd = '/root/nothing-matches-here'
+
+  // A ".jsonl"-named entry that is actually a directory: sessionFiles lists
+  // it as a candidate (it only checks the name), but reading it as a file
+  // throws. Neither this nor the other candidate below matches cwd, so the
+  // scan has to run to completion and actually reach this one, rather than
+  // returning early before it is read.
+  const unreadableDir = join(root, 'projects', '-root-unreadable-candidate')
+  await mkdir(join(unreadableDir, 'session-1.jsonl'), { recursive: true })
+
+  const unrelatedDir = join(root, 'projects', '-root-unrelated-candidate')
+  await mkdir(unrelatedDir, { recursive: true })
+  await writeFile(
+    join(unrelatedDir, 'session-1.jsonl'),
+    `${JSON.stringify({ type: 'user', cwd: '/root/somewhere-else' })}\n`,
+  )
+
+  const found = await projectDirFor(cwd)
+
+  expect(found).toBeNull()
 })
