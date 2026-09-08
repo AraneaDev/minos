@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="632" height="772" viewBox="0 0 632 772" font-family="ui-monospace, SFMono-Regular, &#34;SF Mono&#34;, Menlo, Consolas, &#34;DejaVu Sans Mono&#34;, monospace" font-size="14">
+  <rect width="632" height="772" rx="8" fill="#10151d"/>
+  <line x1="26" y1="52" x2="606" y2="52" stroke="#26303d" stroke-width="1"/>
+  <text x="26" y="42" xml:space="preserve"><tspan fill="#63707f">$ </tspan><tspan fill="#ece5d5">minos file src/report.ts</tspan></text>
+  <text x="26" y="63" xml:space="preserve"></text>
+  <text x="26" y="84" xml:space="preserve"><tspan fill="#b8c0cb">src/report.ts</tspan><tspan fill="#ece5d5">: 6 of its changes did not survive</tspan></text>
+  <text x="26" y="105" xml:space="preserve"><tspan fill="#63707f">  discarded    21:47      prompt 1       to 22:21      prompt 1      </tspan></text>
+  <text x="26" y="126" xml:space="preserve"><tspan fill="#63707f">  overwritten  23:25      prompt 1       to 00:30+1d   prompt 1      </tspan></text>
+  <text x="26" y="147" xml:space="preserve"><tspan fill="#63707f">  overwritten  23:25      prompt 1       to 00:33+1d   prompt 1      </tspan></text>
+  <text x="26" y="168" xml:space="preserve"><tspan fill="#63707f">  reverted     23:39      prompt 1       to 23:39      prompt 1      </tspan></text>
+  <text x="26" y="189" xml:space="preserve"><tspan fill="#63707f">  overwritten  00:30+1d   prompt 1       to 00:31+1d   prompt 1      </tspan></text>
+  <text x="26" y="210" xml:space="preserve"><tspan fill="#63707f">  overwritten  00:33+1d   prompt 1       to 00:38+1d   prompt 1      </tspan></text>
+  <text x="26" y="231" xml:space="preserve"></text>
+  <text x="26" y="252" xml:space="preserve"><tspan fill="#b8c0cb">src/report.ts</tspan><tspan fill="#ece5d5">: 23 operations in this session</tspan></text>
+  <text x="26" y="273" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">21:47</tspan><tspan fill="#b8c0cb">       write    </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="294" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">21:48</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="315" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">22:01</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="336" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">22:21</tspan><tspan fill="#b8c0cb">       write    </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="357" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">22:37</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="378" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">23:25</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="399" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">23:25</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="420" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">23:25</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="441" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">23:25</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="462" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">23:31</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="483" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">23:39</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="504" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">23:39</tspan><tspan fill="#b8c0cb">       edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="525" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:26+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="546" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:30+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="567" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:31+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="588" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:31+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="609" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:31+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="630" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:32+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="651" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:33+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="672" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:33+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="693" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:36+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="714" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:38+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+  <text x="26" y="735" xml:space="preserve"><tspan fill="#b8c0cb">  </tspan><tspan fill="#63707f">00:38+1d</tspan><tspan fill="#b8c0cb">    edit     </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  prompt 1</tspan></text>
+</svg>

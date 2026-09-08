@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="489" height="205" viewBox="0 0 489 205" font-family="ui-monospace, SFMono-Regular, &#34;SF Mono&#34;, Menlo, Consolas, &#34;DejaVu Sans Mono&#34;, monospace" font-size="14">
+  <rect width="489" height="205" rx="8" fill="#10151d"/>
+  <line x1="26" y1="52" x2="463" y2="52" stroke="#26303d" stroke-width="1"/>
+  <text x="26" y="42" xml:space="preserve"><tspan fill="#63707f">$ </tspan><tspan fill="#ece5d5">minos sessions --limit 5</tspan></text>
+  <text x="26" y="63" xml:space="preserve"></text>
+  <text x="26" y="84" xml:space="preserve"><tspan fill="#b8c0cb">0154e1cd  </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 4  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb"> 36  </tspan><tspan fill="#cf6a63">undone 12</tspan></text>
+  <text x="26" y="105" xml:space="preserve"><tspan fill="#b8c0cb">22e028e8  </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 1  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#cf6a63">undone 0</tspan></text>
+  <text x="26" y="126" xml:space="preserve"><tspan fill="#b8c0cb">4c963d1f  </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 7  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#cf6a63">undone 1</tspan></text>
+  <text x="26" y="147" xml:space="preserve"><tspan fill="#b8c0cb">aad96213  </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb"> 1  </tspan><tspan fill="#cf6a63">undone 0</tspan></text>
+  <text x="26" y="168" xml:space="preserve"><tspan fill="#b8c0cb">161d46d6  </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 12  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb"> 41  </tspan><tspan fill="#cf6a63">undone 33</tspan></text>
+</svg>

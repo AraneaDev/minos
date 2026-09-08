@@ -12,7 +12,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/AraneaDev/minos?label=last%20commit)](https://github.com/AraneaDev/minos/commits/main)
 [![Conventional Commits](https://img.shields.io/badge/commits-conventional-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/)
 [![Status](https://img.shields.io/badge/status-pre--release-orange)](#status)
-[![Tests](https://img.shields.io/badge/tests-101%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-153%20passing-brightgreen)](#development)
 
 </div>
 
@@ -34,6 +34,13 @@ because the final diff only shows the last state. Minos has both, and names the 
 
 No hook runs on any turn, nothing is captured while you work, and Minos answers for sessions that
 happened before you installed it.
+
+![The minos report for the session that built Minos: 57 files changed, none of them decided, 54 of
+them applied inside a subagent, and 28 changes that did not survive the
+session](docs/images/report.svg)
+
+Minos reporting on the session that built it. Times are your own clock, and a `+1d` marks a change
+that landed after midnight.
 
 <a id="status"></a>
 
@@ -85,6 +92,12 @@ Three shapes, reported by name rather than merged into one count:
 Each one names both timestamps and both prompts, because the useful sentence is not that a line
 changed twice. It is that what you asked for in prompt 4 did not survive prompt 9.
 
+![minos file src/report.ts: six changes that did not survive, above the 23 operations that touched
+the file, every one of them inside a subagent](docs/images/file.svg)
+
+`minos file` puts one file's whole history in front of you. Every operation on `src/report.ts` ran
+inside a subagent, so none of its 23 changes was ever rendered.
+
 ## Commands
 
 ```text
@@ -94,6 +107,12 @@ minos undone                                       the changes that did not surv
 minos sessions [--limit <n>] [--project <path>]    sessions with headline counts, to pick one
 minos export                                       the ledger as data, JSON
 ```
+
+![minos sessions: five sessions with their decided, auto, subagent and undone
+counts](docs/images/sessions.svg)
+
+`minos sessions` gives you the headline counts per session, so you can pick the one you mean before
+asking for the full report.
 
 In Claude Code, `/minos` prints the report for the session you are in.
 
