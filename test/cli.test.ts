@@ -140,6 +140,82 @@ test('the file command dispatches once a session resolves, passing the target th
   expect(await main(['file', 'x.ts', '--project', cwd])).toBe(0)
 })
 
+// Finding 4: a session id that matched nothing reported "no transcript found
+// for <cwd>", which is false whenever the project has transcripts and only
+// the id was wrong. The two failures need different answers, since the fix
+// for one (run `minos sessions` and pick an id) is not the fix for the other.
+test('an unmatched --session names the session, not the project, and points at the sessions command', async () => {
+  const cwd = '/fake/cli-unmatched-session'
+  await withFakeProject(cwd)
+  const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const code = await main(['report', '--project', cwd, '--session', 'nosuchid'])
+    expect(code).toBe(1)
+    const message = String((errorSpy.mock.calls[0] ?? [''])[0])
+    expect(message).toContain('nosuchid')
+    expect(message).toContain('minos sessions')
+    expect(message).not.toContain('no transcript found')
+  } finally {
+    errorSpy.mockRestore()
+  }
+})
+
+test('a project with no transcripts at all still reports the project, not a session id', async () => {
+  const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const code = await main(['report', '--project', '/fake/cli-nothing-here', '--session', 'nosuchid'])
+    expect(code).toBe(1)
+    expect(String((errorSpy.mock.calls[0] ?? [''])[0])).toContain('no transcript found')
+  } finally {
+    errorSpy.mockRestore()
+  }
+})
+
+// Finding 5: `flag` read the next argument blindly, so `--session` at the end
+// of the line silently reported the latest session instead, and
+// `--session --project /x` took "--project" as the session id and then lost
+// the project entirely. Both are typos that must not quietly report on
+// something other than what was asked for.
+for (const argv of [['report', '--session'], ['report', '--session', '--project', '/fake/cli-eaten']]) {
+  test(`--session with no value is rejected rather than silently defaulting: ${argv.join(' ')}`, async () => {
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const code = await main(argv)
+      expect(code).toBe(2)
+      expect(String((errorSpy.mock.calls[0] ?? [''])[0])).toContain('--session')
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+}
+
+test('--project with no value is rejected the same way', async () => {
+  const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    expect(await main(['report', '--project'])).toBe(2)
+  } finally {
+    errorSpy.mockRestore()
+  }
+})
+
+// Finding 7: `sessions` printed "no transcripts for <cwd>" on stdout and
+// exited 0, while `report` printed the same condition on stderr and exited 1.
+// A caller piping `minos sessions` into anything got an error message in the
+// data and a success code to go with it.
+test('sessions reports having found nothing on stderr with a non-zero exit, as report does', async () => {
+  const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+  const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const code = await main(['sessions', '--project', '/fake/cli-no-sessions'])
+    expect(code).toBe(1)
+    expect(logSpy).not.toHaveBeenCalled()
+    expect(String((errorSpy.mock.calls[0] ?? [''])[0])).toContain('/fake/cli-no-sessions')
+  } finally {
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  }
+})
+
 test('an operation and a prompt survive a JSON round trip unchanged', () => {
   // Operation and Prompt are exactly what Task 13's `minos export --json`
   // serialises and a reader parses back. This catches a real regression: if

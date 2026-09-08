@@ -23,9 +23,24 @@ const USAGE = `minos: reports what a Claude Code session changed, and which of i
   minos sessions [--limit <n>] [--project <path>]     sessions with headline counts, to pick one
   minos export [--session <id>] [--project <path>]    the ledger as data`
 
-const flag = (argv: string[], name: string): string | null => {
+/**
+ * A flag as it was typed: absent altogether, or present with the value that
+ * followed it. Finding 5: reading `argv[at + 1]` blindly conflated three
+ * different things. `--session` at the end of the line read as "no session
+ * given" and quietly reported the most recent one instead, and
+ * `--session --project /repo` took the string "--project" as the session id
+ * and then lost the project. A value that begins with `--` is therefore
+ * treated as the next flag rather than as this one's value: session ids are
+ * UUIDs and project values are absolute paths, so neither ever begins that
+ * way.
+ */
+type Flag = { given: false } | { given: true; value: string | null }
+
+const flag = (argv: string[], name: string): Flag => {
   const at = argv.indexOf(`--${name}`)
-  return at === -1 ? null : argv[at + 1] ?? null
+  if (at === -1) return { given: false }
+  const next = argv[at + 1]
+  return { given: true, value: next === undefined || next.startsWith('--') ? null : next }
 }
 
 /**
@@ -83,16 +98,38 @@ export async function main(argv: string[]): Promise<number> {
     return 2
   }
 
-  const cwd = flag(args, 'project') ?? process.cwd()
+  const projectFlag = flag(args, 'project')
+  if (projectFlag.given && projectFlag.value === null) {
+    console.error('minos: --project needs a path')
+    return 2
+  }
+  const cwd = projectFlag.given ? (projectFlag.value as string) : process.cwd()
+
+  const sessionFlag = flag(args, 'session')
+  if (sessionFlag.given && sessionFlag.value === null) {
+    console.error('minos: --session needs a session id. Run `minos sessions` to list them.')
+    return 2
+  }
+  const session = sessionFlag.given ? (sessionFlag.value as string) : null
 
   if (command === 'sessions') {
     const limitFlag = flag(args, 'limit')
-    const limit = limitFlag === null ? 10 : parsePositiveInt(limitFlag)
-    if (limit === null) {
-      console.error(`minos: --limit must be a positive integer, got "${limitFlag}"`)
+    if (limitFlag.given && limitFlag.value === null) {
+      console.error('minos: --limit needs a positive integer')
       return 2
     }
-    console.log(await runSessions(cwd, limit))
+    const typed = limitFlag.given ? limitFlag.value : null
+    const limit = typed === null ? 10 : parsePositiveInt(typed)
+    if (limit === null) {
+      console.error(`minos: --limit must be a positive integer, got "${typed}"`)
+      return 2
+    }
+    const listing = await runSessions(cwd, limit)
+    if (listing === null) {
+      console.error(`minos: no transcript found for ${cwd}`)
+      return 1
+    }
+    console.log(listing)
     return 0
   }
 
@@ -102,11 +139,16 @@ export async function main(argv: string[]): Promise<number> {
     return 2
   }
 
-  const paths = await resolveSession({ cwd, session: flag(args, 'session') })
-  if (paths === null) {
+  const lookup = await resolveSession({ cwd, session })
+  if (lookup.kind === 'no-project') {
     console.error(`minos: no transcript found for ${cwd}`)
     return 1
   }
+  if (lookup.kind === 'no-session') {
+    console.error(`minos: no session matching "${session}" for ${cwd}. Run \`minos sessions\` to list them.`)
+    return 1
+  }
+  const paths = lookup.paths
 
   if (command === 'undone') console.log(await runUndone(paths))
   else if (command === 'export') console.log(await runExport(paths))

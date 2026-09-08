@@ -37,14 +37,14 @@ test('file reports only the undone changes for that file, matched by suffix', as
   expect(text).toContain('reverted')
 })
 
-test('file matches by trailing path segment, and reports zero when nothing matches', async () => {
+test('file matches by trailing path segment, and says so when nothing matches', async () => {
   // 'auth.ts' is a suffix of the fixture's real path, not the whole path: this
   // guards `endsWith` specifically, not just "some" filtering.
   const bySuffix = await runFile(paths, 'auth.ts')
   expect(bySuffix.startsWith('auth.ts: 1 of its changes did not survive')).toBe(true)
 
   const noMatch = await runFile(paths, 'nonexistent.ts')
-  expect(noMatch).toBe('nonexistent.ts: 0 of its changes did not survive')
+  expect(noMatch).toBe('nonexistent.ts: no operations in this session')
 })
 
 // Finding 6: the spec calls minos file "one file's operation history in the
@@ -192,14 +192,27 @@ describe('commands that resolve a session against the transcript store', () => {
 
     const found = await resolveSession({ cwd, session: null })
 
-    expect(found).not.toBeNull()
-    expect(found?.transcript).toBe(join(projectDir, 'sess-real.jsonl'))
-    expect(found?.subagents).toEqual([join(subagentsDir, 'agent-1.jsonl')])
+    expect(found.kind).toBe('found')
+    expect(found.kind === 'found' && found.paths.transcript).toBe(join(projectDir, 'sess-real.jsonl'))
+    expect(found.kind === 'found' ? found.paths.subagents : []).toEqual([join(subagentsDir, 'agent-1.jsonl')])
   })
 
-  test('resolveSession returns null when no project directory matches the cwd', async () => {
+  test('resolveSession reports no project when no project directory matches the cwd', async () => {
     const found = await resolveSession({ cwd: '/root/nothing-here', session: null })
-    expect(found).toBeNull()
+    expect(found.kind).toBe('no-project')
+  })
+
+  // Finding 4: a project that has transcripts and an id that matches none of
+  // them is a different failure from a project with no transcripts, and the
+  // two must not collapse into one answer.
+  test('resolveSession tells an unmatched session id apart from a project with no transcripts', async () => {
+    const cwd = '/root/fake-project-unmatched'
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(join(projectDir, 'sess-real.jsonl'), `${record({ cwd })}\n`)
+
+    expect((await resolveSession({ cwd, session: 'nosuchid' })).kind).toBe('no-session')
+    expect((await resolveSession({ cwd, session: null })).kind).toBe('found')
   })
 
   // Ruling S2's `files.at(-1)` default (most recent) is covered by the test
@@ -216,14 +229,13 @@ describe('commands that resolve a session against the transcript store', () => {
 
     const found = await resolveSession({ cwd, session: 'abc123' })
 
-    expect(found?.transcript).toBe(join(projectDir, 'session-older-abc123.jsonl'))
+    expect(found.kind === 'found' && found.paths.transcript).toBe(join(projectDir, 'session-older-abc123.jsonl'))
   })
 
   // runSessions: the "no store" branch. A regression that threw instead of
   // reporting, or that reported success, would break this.
-  test('sessions reports plainly when there is no transcript store for the directory', async () => {
-    const text = await runSessions('/root/nothing-here', 10)
-    expect(text).toBe('minos: no transcripts for /root/nothing-here')
+  test('sessions returns nothing at all when there is no transcript store for the directory', async () => {
+    expect(await runSessions('/root/nothing-here', 10)).toBeNull()
   })
 
   // Finding 1: runSessions passed `subagents: []` to every row's analyseSession
@@ -285,13 +297,14 @@ describe('commands that resolve a session against the transcript store', () => {
     await writeFile(join(projectDir, 'sess-002.jsonl'), sessionB.map((r) => JSON.stringify(r)).join('\n'))
 
     const full = await runSessions(cwd, 10)
-    const lines = full.split('\n')
+    expect(full).not.toBeNull()
+    const lines = (full ?? '').split('\n')
     expect(lines.length).toBe(2)
     expect(lines[0]).toBe('sess-001  decided 1  auto 0  subagent 0  undone 0')
     expect(lines[1]).toBe('sess-002  decided 0  auto 1  subagent 0  undone 1')
 
     const limited = await runSessions(cwd, 1)
-    expect(limited.split('\n')).toEqual([lines[1]])
+    expect((limited ?? '').split('\n')).toEqual([lines[1]])
   })
 
   // Ruling A1: a bad --limit must fail loudly rather than silently reporting
@@ -320,11 +333,34 @@ describe('commands that resolve a session against the transcript store', () => {
     })
   }
 
+  // Finding 5, for --limit: a flag typed with no value at all is a different
+  // mistake from one typed with a bad value, and reading the next argument
+  // blindly turned `--limit --project /x` into the limit "--project".
+  for (const argv of [['sessions', '--limit'], ['sessions', '--limit', '--project', '/root/x']]) {
+    test(`sessions rejects --limit with no value: ${argv.join(' ')}`, async () => {
+      const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+      const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+      try {
+        expect(await main(argv)).toBe(2)
+        expect(logSpy).not.toHaveBeenCalled()
+        expect(String((errorSpy.mock.calls[0] ?? [''])[0])).toContain('--limit')
+      } finally {
+        errorSpy.mockRestore()
+        logSpy.mockRestore()
+      }
+    })
+  }
+
   test('sessions still accepts a real positive integer limit', async () => {
+    const cwd = '/root/fake-project-good-limit'
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(join(projectDir, 'sess-limit.jsonl'), `${record({ cwd })}\n`)
+
     const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
     const logSpy = spyOn(console, 'log').mockImplementation(() => {})
     try {
-      const code = await main(['sessions', '--limit', '3'])
+      const code = await main(['sessions', '--project', cwd, '--limit', '3'])
       expect(code).toBe(0)
       expect(errorSpy).not.toHaveBeenCalled()
     } finally {
@@ -357,4 +393,37 @@ describe('commands that resolve a session against the transcript store', () => {
       logSpy.mockRestore()
     }
   })
+})
+
+// Finding 6: a path this session never touched printed "0 of its changes did
+// not survive" and nothing else, which reads as a clean bill of health for
+// the file. The honest answer to a typo'd path is that nothing was found.
+test('file says a path was never touched rather than reporting it as clean', async () => {
+  const text = await runFile(paths, 'nonexistent.ts')
+  expect(text.toLowerCase()).toContain('no operations')
+  expect(text).not.toContain('0 of its changes did not survive')
+})
+
+// Finding 1, in the two commands that print times of their own: both sliced
+// the UTC clock out of the timestamp exactly as the report did.
+test('undone prints times in the reader\'s own zone', async () => {
+  process.env.TZ = 'Europe/Amsterdam'
+  try {
+    const text = await runUndone(paths)
+    expect(text).toContain('21:02')
+    expect(text).not.toContain('19:02')
+  } finally {
+    process.env.TZ = 'UTC'
+  }
+})
+
+test('file prints times in the reader\'s own zone', async () => {
+  process.env.TZ = 'Europe/Amsterdam'
+  try {
+    const text = await runFile(paths, '/repo/src/auth.ts')
+    expect(text).toContain('21:02')
+    expect(text).not.toContain('19:02')
+  } finally {
+    process.env.TZ = 'UTC'
+  }
 })

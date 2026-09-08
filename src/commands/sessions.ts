@@ -11,11 +11,19 @@ import { analyseSession } from '../session'
  * change, indistinguishable from a session with no subagent work at all.
  * This reads one more directory per row than the earlier version did, which
  * is why `--limit` exists and defaults to a small number of rows.
+ *
+ * Returns null when the directory has no transcripts at all, rather than a
+ * line of prose (Finding 7). An error message returned as the result was
+ * printed to stdout with a success exit code, so a caller piping this
+ * received the failure as data and had nothing to tell it apart from a real
+ * listing. Reporting it is the caller's job, on the same stream and with the
+ * same exit code as every other command's version of this failure.
  */
-export async function runSessions(cwd: string, limit: number): Promise<string> {
+export async function runSessions(cwd: string, limit: number): Promise<string | null> {
   const dir = await projectDirFor(cwd)
-  if (dir === null) return `minos: no transcripts for ${cwd}`
+  if (dir === null) return null
   const files = (await sessionFiles(dir)).slice(-limit)
+  if (files.length === 0) return null
   const rows: string[] = []
   for (const transcript of files) {
     const sessionId = basename(transcript, '.jsonl')
