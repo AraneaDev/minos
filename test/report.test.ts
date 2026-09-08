@@ -330,3 +330,71 @@ test('an allow rule carrying an escape sequence is sanitised before it reaches t
   const text = renderReport(report, { allowRules: [`Edit(src${erase}/**)`] })
   expect(text).not.toContain(erase)
 })
+
+// Finding 1: every time in the report came from `iso.slice(11, 16)`, the UTC
+// clock. The fixture's first prompt is 19:01Z, which is 21:01 for a reader in
+// Amsterdam; printing 19:01 to that reader names a time they never saw.
+test('times are rendered in the reader\'s own zone, not the transcript\'s UTC', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  process.env.TZ = 'Europe/Amsterdam'
+  try {
+    const text = renderReport(report)
+    expect(text).toContain('21:01')
+    expect(text).not.toContain('19:01')
+  } finally {
+    process.env.TZ = 'UTC'
+  }
+})
+
+// Finding 2: a `+Nd` suffix is only readable against a date, and the header is
+// where that date belongs. Without it the suffix counts from nothing.
+test('the header names the local date the session started', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const text = renderReport(report)
+  expect(text.split('\n')[1] ?? '').toContain('2026-09-07')
+})
+
+// Finding 2: an undone row spanning two days rendered as "19:02 to 10:00",
+// which reads as a change reverted 9 hours earlier than it was made rather
+// than one that stood for nearly two days.
+test('an UNDONE row on a later day says how many days later, rather than reading as the same day', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const op = (at: string): Operation => ({
+    file: '/repo/src/slow.ts', kind: 'edit', at, uuid: 'u', promptId: 'p1', attestation: 'auto',
+    oldString: null, newString: null, replaceAll: false, content: null,
+  })
+  const text = renderReport({
+    ...report,
+    undone: [{
+      file: '/repo/src/slow.ts', kind: 'overwritten' as const, line: null,
+      introduced: op('2026-09-07T19:02:00Z'), undoneBy: op('2026-09-09T10:00:00Z'),
+    }],
+  })
+  const line = text.split('\n').find((l) => l.includes('slow.ts')) ?? ''
+  expect(line).toContain('19:02')
+  expect(line).toContain('10:00+2d')
+})
+
+// Finding 8: the +/- columns were padded to a fixed four digits, so a session
+// with five-digit line counts pushed every column after it out of true. The
+// real araneadev session (+39839 / -4900) rendered exactly this way.
+test('a five-digit line count keeps the columns after it aligned', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const wide = {
+    ...report,
+    totals: {
+      decided: { files: 0, added: 0, removed: 0 },
+      auto: { files: 12, added: 3785, removed: 70 },
+      subagent: { files: 197, added: 39839, removed: 4900 },
+    },
+  }
+  const text = renderReport(wide)
+  const lines = text.split('\n')
+  const legends = ['you were asked before it was applied', 'acceptEdits or auto, no prompt', 'applied inside a subagent, never rendered']
+  const starts = legends.map((legend) => {
+    const row = lines.find((l) => l.includes(legend))
+    expect(row).toBeDefined()
+    return (row ?? '').indexOf(legend)
+  })
+  expect(new Set(starts).size).toBe(1)
+})
