@@ -44,9 +44,10 @@ that landed after midnight.
 
 <a id="status"></a>
 
-> **Status:** pre-release. Minos is **not yet published to npm**. Install from the source
-> repository. It requires [Bun](https://bun.sh/) 1.1 or newer and a Claude Code transcript
-> store at `~/.claude/projects`.
+> **Status:** pre-release. Minos is **not yet published to npm**, so it installs from this
+> repository or from the aranea marketplace: see [Install](#install). It requires
+> [Bun](https://bun.sh/) 1.1 or newer and a Claude Code transcript store at
+> `~/.claude/projects`.
 
 ---
 
@@ -123,6 +124,25 @@ In Claude Code, `/minos` prints the report for the session you are in.
 - It does not touch git, stage anything, or revert anything.
 - It writes nothing under `~/.claude` and nothing in your working tree.
 - It makes no network request of any kind, runs no daemon, and sends no telemetry.
+
+## Install
+
+In Claude Code, as a plugin, which is where `/minos` comes from:
+
+```bash
+claude plugin marketplace add https://aranea-development.nl/plugins/marketplace.json
+claude plugin install minos@aranea
+```
+
+On the command line, from this repository, since Minos is not on npm yet:
+
+```bash
+bun install -g github:AraneaDev/minos
+minos report
+```
+
+Nothing has to be installed before the session you want to read. Minos runs against the
+transcript store as it stands, so it answers for sessions that happened weeks earlier.
 
 ## Requirements
 
