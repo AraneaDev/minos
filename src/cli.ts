@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { resolveSession, runReport } from './commands/report'
 import { runExport } from './commands/export'
 import { runFile } from './commands/file'
