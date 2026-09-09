@@ -133,6 +133,11 @@ minos export        the ledger as data, JSON
 `report`, `file`, `undone` and `export` each take `--session <id>` and `--project <path>`.
 `sessions` takes `--project` and `--limit <n>`.
 
+The report is coloured when stdout is a terminal, on the same scheme the cards above use: one
+colour per class, one for the undone kinds, and grey for the caveats. A pipe, a redirect,
+`minos export` and any environment with `NO_COLOR` set get plain text, so what a script reads is
+what the tool means.
+
 ![minos sessions: five sessions with their decided, auto, subagent and undone
 counts](docs/images/sessions.svg)
 

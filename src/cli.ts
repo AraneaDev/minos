@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { colourEnabled, paint } from './colour'
 import { resolveSession, runReport } from './commands/report'
 import { runExport } from './commands/export'
 import { runFile } from './commands/file'
@@ -78,6 +79,19 @@ function parsePositiveInt(value: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null
 }
 
+/**
+ * Prints a command's output, coloured where that is allowed.
+ *
+ * Usage text and errors go through plain `console.log` and `console.error`
+ * instead: the rules in `colour.ts` read a report's shapes, and a usage line
+ * indented like a caveat would come out dim for no reason. `minos export` is
+ * left alone too, since its JSON is read by a program.
+ * @param text one command's whole output
+ */
+function show(text: string): void {
+  console.log(paint(text, colourEnabled({ isTTY: process.stdout.isTTY === true, env: process.env })))
+}
+
 /** Entry point. Returns the exit code rather than calling exit, so it is testable. */
 export async function main(argv: string[]): Promise<number> {
   // Checked before any command dispatch: a leading flag is not a recognised
@@ -130,7 +144,7 @@ export async function main(argv: string[]): Promise<number> {
       console.error(`minos: no transcript found for ${cwd}`)
       return 1
     }
-    console.log(listing)
+    show(listing)
     return 0
   }
 
@@ -151,10 +165,11 @@ export async function main(argv: string[]): Promise<number> {
   }
   const paths = lookup.paths
 
-  if (command === 'undone') console.log(await runUndone(paths))
+  if (command === 'undone') show(await runUndone(paths))
+  // Not `show`: export is JSON for a program to parse, so it never gets escapes.
   else if (command === 'export') console.log(await runExport(paths))
-  else if (command === 'file') console.log(await runFile(paths, target as string))
-  else console.log(await runReport(paths))
+  else if (command === 'file') show(await runFile(paths, target as string))
+  else show(await runReport(paths))
 
   return 0
 }
