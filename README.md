@@ -24,23 +24,26 @@
 > repository, and which of it was ever put in front of you.
 
 Minos reads the transcripts Claude Code already writes and reports what a session did to your
-working tree. Every changed file is sorted into one of three classes: the ones Claude Code stopped
-and asked you about, the ones applied without asking because the session was in `acceptEdits`, and
-the ones applied inside a subagent whose diff never rendered in your terminal at all.
+working tree. Every change is sorted into one of three classes: the ones submitted in a mode where
+Claude Code stops and asks, the ones applied without asking because the session was in
+`acceptEdits`, and the ones applied inside a subagent whose diff never rendered in your terminal at
+all.
 
 It also reports the changes that did not survive the session. A fix applied at 19:02 and
 overwritten at 19:41 by a later turn working on something else is invisible in the final diff,
-because the final diff only shows the last state. Minos has both, and names the prompt behind each.
+because the final diff only shows the last state. Minos has both, and names the prompt behind each
+wherever the transcript lets it.
 
 No hook runs on any turn, nothing is captured while you work, and Minos answers for sessions that
-happened before you installed it.
+happened before you installed it, for as long as Claude Code still keeps their transcripts.
 
 ![The minos report for the session that built Minos: 57 files changed, none of them decided, 54 of
 them applied inside a subagent, and 28 changes that did not survive the
 session](docs/images/report.svg)
 
-Minos reporting on the session that built it. Times are your own clock, and a `+1d` marks a change
-that landed after midnight.
+Minos reporting on the session that built it. Times are in the timezone Minos runs in rather than
+the transcript's UTC, and a `+1d` marks a time that falls on the calendar day after the session
+began.
 
 <a id="status"></a>
 
@@ -57,8 +60,13 @@ Minos reports whether Claude Code **put a change to you as a decision**. It does
 whether you read it, it cannot know that, and nothing on your machine records it. A change you
 approved in half a second is still counted as one you were asked about.
 
+It is no softer on itself. A `decided` label is read off the permission mode alone, never off a
+recorded approval, so a standing allow rule can mean a `default` turn put nothing on screen at all.
+The report says so under its own figures, and names the allow rules it found in force at the moment
+you ran it.
+
 That line matters more than any feature below it. A tool that implies it knows what your eyes did
-is worth less than one that does less and says which is which.
+is worth less than one that says plainly where its knowledge stops.
 
 ## Why it exists
 
@@ -75,39 +83,55 @@ was done and then undone before you ever saw it.
 
 | Class | What it means |
 |---|---|
-| `decided` | The turn ran in `default` or `plan` mode, so Claude Code stopped and asked before applying it |
-| `auto` | The turn ran under `acceptEdits`, `bypassPermissions`, or `auto`, the mode most real changes run under. Applied with no prompt of any kind |
+| `decided` | The prompt this change descends from was submitted in `default` or `plan` mode, so Claude Code would have stopped and asked. Read off the mode, never off an approval |
+| `auto` | Submitted under `acceptEdits`, `bypassPermissions` or `auto`, the mode most real changes run under. A mode this build does not recognise, or one the transcript never recorded, is counted here too, rather than guessed in your favour |
 | `subagent` | Applied inside a subagent. No diff reached your terminal in any form |
 
 `subagent` wins over the other two, because even in `default` mode a subagent's edits are not
-rendered to you. Nothing is counted twice.
+rendered to you. No change is counted twice. A file changed under more than one class is counted
+under each, so those three file counts overlap on purpose, and the report repeats that where it
+prints them.
+
+What Minos can see at all is what the transcript holds, which is the `Edit`, `Write` and
+`NotebookEdit` tools. A file rewritten by a shell command, by `MultiEdit` or by an MCP server of
+your own leaves nothing to read and appears in none of the counts.
 
 ## The changes that did not survive
 
 Three shapes, reported by name rather than merged into one count:
 
 - **overwritten**: content an earlier operation introduced is gone after a later one
-- **reverted**: after a later operation the region matches what the file held before the first
-- **discarded**: a whole-file `Write` replaced a file that earlier operations had already changed
+- **reverted**: a later edit is the exact inverse of the earlier one, putting back the text it had
+  replaced
+- **discarded**: a later whole-file `Write` no longer carries what an earlier operation introduced
 
-Each one names both timestamps and both prompts, because the useful sentence is not that a line
-changed twice. It is that what you asked for in prompt 4 did not survive prompt 9.
+Each one names both times, and the prompt on either side wherever the transcript allows it, because
+what you want to read is that what you asked for in prompt 4 did not survive prompt 9. A change
+that cannot be traced back to a prompt is marked `(unattributed)` rather than guessed at, and
+subagent operations often are.
+
+Detection works on the text of the changes themselves, so read it as a strong indication rather
+than a proof. A file whose final state cannot be reconstructed can produce a finding that does not
+hold, and text that turns up again elsewhere in a file can hide one that does.
 
 ![minos file src/report.ts: six changes that did not survive, above the 23 operations that touched
 the file, every one of them inside a subagent](docs/images/file.svg)
 
-`minos file` puts one file's whole history in front of you. Every operation on `src/report.ts` ran
-inside a subagent, so none of its 23 changes was ever rendered.
+`minos file` puts one file's whole history in that session in front of you. Every operation on
+`src/report.ts` ran inside a subagent, so none of its 23 changes was ever rendered.
 
 ## Commands
 
 ```text
-minos report [--session <id>] [--project <path>]   the default; latest session for this directory
-minos file <path>                                  one file's operation history in the session
-minos undone                                       the changes that did not survive, on their own
-minos sessions [--limit <n>] [--project <path>]    sessions with headline counts, to pick one
-minos export                                       the ledger as data, JSON
+minos report        the default; the latest session for this directory
+minos file <path>   one file's operation history in that session
+minos undone        the changes that did not survive, on their own
+minos sessions      sessions with headline counts, to pick one
+minos export        the ledger as data, JSON
 ```
+
+`report`, `file`, `undone` and `export` each take `--session <id>` and `--project <path>`.
+`sessions` takes `--project` and `--limit <n>`.
 
 ![minos sessions: five sessions with their decided, auto, subagent and undone
 counts](docs/images/sessions.svg)
@@ -119,11 +143,12 @@ In Claude Code, `/minos` prints the report for the session you are in.
 
 ## What it does not do
 
-- It does not tell you whether you read anything. It reports whether you were asked.
 - It does not review the code it reports on. Momus, Chaos and Knossos do that.
-- It does not touch git, stage anything, or revert anything.
-- It writes nothing under `~/.claude` and nothing in your working tree.
-- It makes no network request of any kind, runs no daemon, and sends no telemetry.
+- It does not touch git. Nothing is staged, nothing is committed, nothing is reverted.
+- It writes nothing under `~/.claude` and nothing in your working tree. It reads the transcripts,
+  and the allow rules in your `settings.json` so it can name the ones that let a `default` turn
+  apply a change without showing it, and nothing else.
+- It makes no network request, runs no daemon, and sends no telemetry.
 
 ## Install
 
@@ -146,7 +171,8 @@ transcript store as it stands, so it answers for sessions that happened weeks ea
 
 ## Requirements
 
-Bun 1.1.0 or newer, and a Claude Code transcript store at `~/.claude/projects`.
+Bun 1.1.0 or newer, and a Claude Code transcript store at `~/.claude/projects`, or wherever
+`CLAUDE_CONFIG_DIR` points.
 
 ## Development
 
