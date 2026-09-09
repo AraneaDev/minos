@@ -138,8 +138,8 @@ colour per class, one for the undone kinds, and grey for the caveats. A pipe, a 
 `minos export` and any environment with `NO_COLOR` set get plain text, so what a script reads is
 what the tool means.
 
-![minos sessions: five sessions with their decided, auto, subagent and undone
-counts](docs/images/sessions.svg)
+![minos sessions: the four sessions of this repository with their decided, auto, subagent and
+undone counts](docs/images/sessions.svg)
 
 `minos sessions` gives you the headline counts per session, so you can pick the one you mean before
 asking for the full report.
