@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/AraneaDev/minos/compare/v0.0.2...v0.0.3) (2026-09-15)
+
+
+### Documentation
+
+* **readme:** credit the author and link the write-up ([#2](https://github.com/AraneaDev/minos/issues/2)) ([2b1a57c](https://github.com/AraneaDev/minos/commit/2b1a57c6d872bdcdbda82a298955a29a746628ec))
+
 ## [0.0.2](https://github.com/AraneaDev/minos/compare/v0.0.1...v0.0.2) (2026-09-09)
 
 

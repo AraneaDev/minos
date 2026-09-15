@@ -1,6 +1,6 @@
 {
   "name": "minos",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Reports what an agent session actually changed, and how much of it was never put to you as a decision",
   "license": "MIT",
   "type": "module",
