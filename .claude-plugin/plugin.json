@@ -1,7 +1,7 @@
 {
   "name": "minos",
   "displayName": "Minos",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Reports what a session actually changed, and separates the changes you were asked about from the ones that were applied without asking.",
   "author": {
     "name": "AraneaDev",

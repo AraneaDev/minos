@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/AraneaDev/minos/compare/v0.0.3...v0.0.4) (2026-09-16)
+
+
+### Continuous integration
+
+* **pr-title:** share one commit-style rule between CI and the hook ([#4](https://github.com/AraneaDev/minos/issues/4)) ([9f8eb18](https://github.com/AraneaDev/minos/commit/9f8eb18e302eb37c2646417d04f4b999c08d9803))
+
 ## [0.0.3](https://github.com/AraneaDev/minos/compare/v0.0.2...v0.0.3) (2026-09-15)
 
 
