@@ -23,19 +23,22 @@
 > did. This tool weighs something smaller: what an agent session actually changed in your
 > repository, and which of it was ever put in front of you.
 
-Minos reads the transcripts Claude Code already writes and reports what a session did to your
-working tree. Every change is sorted into one of three classes: the ones submitted in a mode where
-Claude Code stops and asks, the ones applied without asking because the session was in
-`acceptEdits`, and the ones applied inside a subagent whose diff never rendered in your terminal at
-all.
+**TL;DR:** Minos reconstructs what an agent session changed and whether Claude Code would have
+shown each change for a decision. It reads Claude Code transcripts, classifies `Edit`, `Write`,
+and `NotebookEdit` operations by permission mode and subagent context, and tracks changes that did
+not survive to the final working tree.
+
+Every change is sorted into one of three classes: the ones submitted in a mode where Claude Code
+stops and asks, the ones applied without asking because the session was in `acceptEdits`, and the
+ones applied inside a subagent whose diff never rendered in your terminal at all.
 
 It also reports the changes that did not survive the session. A fix applied at 19:02 and
 overwritten at 19:41 by a later turn working on something else is invisible in the final diff,
 because the final diff only shows the last state. Minos has both, and names the prompt behind each
 wherever the transcript lets it.
 
-No hook runs on any turn, nothing is captured while you work, and Minos answers for sessions that
-happened before you installed it, for as long as Claude Code still keeps their transcripts.
+No hook runs on any turn and nothing is captured while you work. Minos can answer for sessions
+that happened before you installed it, for as long as Claude Code still keeps their transcripts.
 
 ![The minos report for the session that built Minos: 57 files changed, none of them decided, 54 of
 them applied inside a subagent, and 28 changes that did not survive the

@@ -41,8 +41,8 @@ export interface ColourContext {
  */
 export function colourEnabled(context: ColourContext): boolean {
   if (context.env.NO_COLOR !== undefined) return false
-  if (context.env.TERM === 'dumb') return false
   if (context.env.FORCE_COLOR !== undefined) return true
+  if (context.env.TERM === 'dumb') return false
   return context.isTTY
 }
 
