@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.6](https://github.com/AraneaDev/minos/compare/v0.0.5...v0.0.6) (2026-09-16)
+
+
+### Continuous integration
+
+* **release:** allow Release Please to be run by hand ([#8](https://github.com/AraneaDev/minos/issues/8)) ([6ed12a7](https://github.com/AraneaDev/minos/commit/6ed12a7046569a4fb0ea822bd309b2cbd0e1765f))
+
 ## [0.0.5](https://github.com/AraneaDev/minos/compare/v0.0.4...v0.0.5) (2026-09-16)
 
 
