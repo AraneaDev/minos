@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/AraneaDev/minos/compare/v0.0.4...v0.0.5) (2026-09-16)
+
+
+### Continuous integration
+
+* **pr-title:** check out the base branch, not the pull request's pinned base commit ([#6](https://github.com/AraneaDev/minos/issues/6)) ([9260c83](https://github.com/AraneaDev/minos/commit/9260c834199aa4c8b805dc65121be0d52752a9a7))
+
 ## [0.0.4](https://github.com/AraneaDev/minos/compare/v0.0.3...v0.0.4) (2026-09-16)
 
 
