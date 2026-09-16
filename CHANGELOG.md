@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.7](https://github.com/AraneaDev/minos/compare/v0.0.6...v0.0.7) (2026-09-16)
+
+
+### Fixes
+
+* honor forced terminal color ([#10](https://github.com/AraneaDev/minos/issues/10)) ([9091415](https://github.com/AraneaDev/minos/commit/9091415c50b6d65fd491be2bdd12e3f866d98526))
+* ignore release configuration changes ([#12](https://github.com/AraneaDev/minos/issues/12)) ([1aa4f31](https://github.com/AraneaDev/minos/commit/1aa4f31db4a03285e3ab3e3488f8feee22774eed))
+
 ## [0.0.6](https://github.com/AraneaDev/minos/compare/v0.0.5...v0.0.6) (2026-09-16)
 
 
