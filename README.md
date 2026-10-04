@@ -162,10 +162,14 @@ In Claude Code, `/minos` prints the report for the session you are in.
 
 In Claude Code, as a plugin, which is where `/minos` comes from:
 
-```bash
-claude plugin marketplace add https://aranea-development.nl/plugins/marketplace.json
+<!-- aranea-install:start -->
+Install from the Aranea marketplace:
+
+```sh
+claude plugin marketplace add https://github.com/AraneaDev/aranea-marketplace
 claude plugin install minos@aranea
 ```
+<!-- aranea-install:end -->
 
 On the command line, from this repository, since Minos is not on npm yet:
 
