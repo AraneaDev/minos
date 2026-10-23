@@ -24,9 +24,9 @@
 > repository, and which of it was ever put in front of you.
 
 ![A Claude Code session with the Minos pane docked beside it: the chat on the left shows the
-prompts and the edits as they happen, and the pane on the right counts one file changed under auto
-and one inside a subagent, lists the five prompts that changed something, and shows every change
-to src/checkout.ts as a diff](docs/images/session.svg)
+prompts and the edits as they happen, and the pane on the right counts one file changed under auto,
+one inside a subagent and three changes that did not survive, lists the five prompts that changed
+something, and shows every change to src/checkout.ts as a diff](docs/images/session.svg)
 
 Type `/minos` in Claude Code and a pane opens beside the chat. It shows what this session changed
 while the session runs: which changes were put to you as a decision, which were applied without
