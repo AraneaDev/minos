@@ -410,3 +410,18 @@ test('a five-digit line count keeps the columns after it aligned', async () => {
   })
   expect(new Set(starts).size).toBe(1)
 })
+
+test('changes whose tool call failed are named in one line, and a report with none prints no such line', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  expect(report.failedChanges).toEqual([])
+  const clean = renderReport(report)
+  expect(clean).not.toContain('left out')
+  const failed = [
+    { toolUseId: 'x1', at: '2026-09-07T09:00:00Z' },
+    { toolUseId: 'x2', at: '2026-09-07T09:01:00Z' },
+  ]
+  const text = renderReport({ ...report, failedChanges: failed })
+  expect(text.split('\n')).toContain('  Left out 2 changes whose tool call failed or was refused, so nothing was written.')
+  expect(renderReport({ ...report, failedChanges: failed.slice(0, 1) })).toContain('  Left out 1 change whose tool call failed')
+  expect(text.split('\n').filter((l) => !l.startsWith('  Left out')).join('\n')).toBe(clean)
+})

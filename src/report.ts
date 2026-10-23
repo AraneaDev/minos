@@ -198,6 +198,9 @@ export function renderReport(report: SessionReport, options?: RenderOptions): st
   if (report.skippedLines > 0) {
     out.push(`  ${report.skippedLines} transcript lines did not parse and were skipped.`)
   }
+  if (report.failedChanges.length > 0) {
+    out.push(`  Left out ${plural(report.failedChanges.length, 'change', 'changes')} whose tool call failed or was refused, so nothing was written.`)
+  }
   if (report.unattributedCount > 0) {
     out.push(
       `  ${plural(report.unattributedCount, 'change', 'changes')} could not be attributed to a prompt. They are counted above but do not appear in the BY PROMPT table above, and an unattributed undone change does not appear in that table's undone column either.`,
