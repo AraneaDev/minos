@@ -282,3 +282,28 @@ test('an undone finding resting on a change known failed in another copy is not 
   const a = one([landed, failed])
   expect(a.total.changes).toEqual({ decided: 1, auto: 0, subagent: 0, undone: 0 })
 })
+
+test('with no window, the idle-project line says those projects had no session with a known time', () => {
+  const timeless = report([], { startedAt: null, endedAt: null })
+  const input = [
+    { dir: 'p1', cwds: ['/r1'], reports: [report([op('t1')])] },
+    { dir: 'p2', cwds: ['/r2'], reports: [timeless] },
+  ]
+  const open = renderAll(aggregate(input, NO_WINDOW, 0)).split('\n')
+  expect(open).toContain('1 project had no session with a known time')
+  expect(open.some((l) => l.includes('in the window'))).toBe(false)
+  const windowed = renderAll(aggregate(input, { since: '2026-09-01', until: null }, 0)).split('\n')
+  expect(windowed).toContain('1 project had no session in the window')
+})
+
+test('a long path with older ones is cut from the front and keeps its older-path suffix within 48 characters', () => {
+  const long = `/tmp/claude-0/${'scratch-'.repeat(12)}end`
+  const a = aggregate([{ dir: 'p', cwds: [long, '/old/one', '/old/two'], reports: [report([op('t1')])] }], NO_WINDOW, 0)
+  const row = renderAll(a)
+    .split('\n')
+    .find((l) => l.includes('older paths'))
+  const label = row?.slice(0, 48) ?? ''
+  expect(label.startsWith('…')).toBe(true)
+  expect(label.endsWith('scratch-end (+2 older paths)')).toBe(true)
+  expect(row?.slice(48)).toBe('         1        1     0         0       0')
+})

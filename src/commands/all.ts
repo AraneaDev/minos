@@ -4,7 +4,7 @@ import { aggregate } from '../aggregate'
 import { DECIDED_NOTE } from '../caveats'
 import type { Aggregate, ClassCounts, ProjectAggregate } from '../aggregate'
 import { localDate } from '../clock'
-import { pathCol, sanitise } from '../report'
+import { pathCol, plural, sanitise } from '../report'
 import { claudeHome, sessionFiles, subagentFiles } from '../paths'
 import { analyseSession } from '../session'
 import type { SessionReport } from '../session'
@@ -77,8 +77,6 @@ export async function collectAll(window: Window): Promise<Aggregate> {
   return aggregate(projects, window, read.length - projects.length, unreadable)
 }
 
-const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
-
 /** The widest the project column gets, so one long scratch path cannot widen the whole table. */
 const PROJECT_WIDTH = 48
 
@@ -111,7 +109,8 @@ function rowsExceedTotal(a: Aggregate): boolean {
  * open `until` reads as today's local date, so the stated window is always a
  * pair of dates or says plainly that it has no start. A project with no
  * session in the window gets no row, only a count in one line under the
- * table; the total and the JSON still cover every project.
+ * table, which says the project had no session with a known time when no
+ * window is set; the total and the JSON still cover every project.
  */
 export function renderAll(a: Aggregate): string {
   const shown = a.projects.filter((p) => p.sessions > 0)
@@ -140,7 +139,12 @@ export function renderAll(a: Aggregate): string {
       `left out ${plural(a.total.undatedShellWrites, 'shell command', 'shell commands')} matching a write pattern with no readable timestamp, which no window can place`,
     )
   }
-  if (idle > 0) out.push(`${plural(idle, 'project', 'projects')} had no session in the window`)
+  if (idle > 0) {
+    // With no window every session with a known start or end counts, so a
+    // project left without a row is one whose sessions carry no time at all.
+    const open = a.window.since === null && a.window.until === null
+    out.push(`${plural(idle, 'project', 'projects')} had no session ${open ? 'with a known time' : 'in the window'}`)
+  }
   if (rowsExceedTotal(a)) out.push('a change copied into another project counts in both rows and once in the total')
   if (a.undatedDropped > 0) {
     out.push(`left out ${plural(a.undatedDropped, 'change', 'changes')} with no readable timestamp, which no window can place`)
