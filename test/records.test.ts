@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { isAssistantRecord, isPromptRecord, promptText, toolUses } from '../src/records'
+import { isPromptRecord, promptText, toolUses } from '../src/records'
 
 const prompt = {
   type: 'user',
@@ -72,7 +72,6 @@ test('tool uses come back with their full input', () => {
       ],
     },
   }
-  expect(isAssistantRecord(record)).toBe(true)
   expect(toolUses(record)).toEqual([
     { id: 't1', name: 'Edit', input: { file_path: '/a', old_string: 'x', new_string: 'y' } },
   ])

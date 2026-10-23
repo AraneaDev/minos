@@ -32,11 +32,6 @@ export function isPromptRecord(r: UnknownRecord): boolean {
   return r.type === 'user' && r.isMeta !== true && typeof r.permissionMode === 'string' && r.promptSource !== 'system'
 }
 
-/** True for a record carrying an assistant turn. */
-export function isAssistantRecord(r: UnknownRecord): boolean {
-  return r.type === 'assistant' && asObject(r.message) !== null
-}
-
 /** The prompt's text, from either the string or the content-block form. */
 export function promptText(r: UnknownRecord): string {
   const content = asObject(r.message)?.content

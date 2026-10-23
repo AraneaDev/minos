@@ -25,11 +25,6 @@ export function encodeProjectSlug(dir: string): string {
   return dir.replace(/[^a-zA-Z0-9]/g, '-')
 }
 
-/** Where the per-version file backups for one session live. */
-export function fileHistoryDir(sessionId: string): string {
-  return join(claudeHome(), 'file-history', sessionId)
-}
-
 /**
  * A file's modification time, or a sentinel that sorts before every real
  * timestamp when it cannot be read (removed between the readdir that found

@@ -5,7 +5,6 @@ import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import {
   claudeHome,
   encodeProjectSlug,
-  fileHistoryDir,
   projectFor,
   recordedCwds,
   sessionFiles,
@@ -23,12 +22,6 @@ test('CLAUDE_CONFIG_DIR overrides the home directory', () => {
   expect(claudeHome()).toBe('/tmp/elsewhere')
   delete process.env.CLAUDE_CONFIG_DIR
   expect(claudeHome().endsWith('/.claude')).toBe(true)
-})
-
-test('the file history directory is per session', () => {
-  process.env.CLAUDE_CONFIG_DIR = '/tmp/elsewhere'
-  expect(fileHistoryDir('abc')).toBe('/tmp/elsewhere/file-history/abc')
-  delete process.env.CLAUDE_CONFIG_DIR
 })
 
 // The remaining tests build a fake store under a temp directory, so they
