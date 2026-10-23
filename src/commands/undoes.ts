@@ -1,5 +1,6 @@
 import { clock } from '../clock'
-import { shown } from '../ledger-view'
+import { VERB, shown } from '../ledger-view'
+import { promptRef, sanitise, sessionOrigin } from '../report'
 import { findUndone } from '../reverts'
 import type { UndoneKind } from '../reverts'
 import { analyseSession } from '../session'
@@ -15,6 +16,8 @@ export interface ProposedChange {
   new_string?: string
   content?: string
   replace_all?: boolean
+  /** The call's own id, when the caller has it: how a call the transcript already holds is recognised. */
+  tool_use_id?: string
 }
 
 /** An earlier change the proposed one ends, with the sentence to show for it. */
@@ -24,6 +27,8 @@ export interface EndedChange {
   introducedAt: string
   introducedPrompt: number | null
   line: number | null
+  /** How many earlier changes this entry stands for: identical ones are merged into one note. */
+  count: number
   note: string
 }
 
@@ -47,31 +52,26 @@ export function parseProposed(stdin: string): ProposedChange | null {
     new_string: asString(d.new_string),
     content: asString(d.content),
     replace_all: d.replace_all === true,
+    tool_use_id: asString(d.tool_use_id),
   }
-}
-
-/** Whether a transcript operation is this very call, already recorded. */
-function sameCall(o: Operation, p: ProposedChange): boolean {
-  return (
-    o.kind === p.kind &&
-    o.oldString === (p.old_string ?? null) &&
-    o.newString === (p.new_string ?? null) &&
-    o.content === (p.content ?? null)
-  )
 }
 
 /**
  * The session's earlier changes this one would end. The proposed change joins
  * the file's operations as the last one and `findUndone` does the judging; only
- * findings it ends are kept. A call the transcript already holds as the file's
- * last operation is not added a second time.
+ * findings it ends are kept. A call the transcript already holds, recognised by
+ * its tool_use id, is judged where it stands rather than added a second time.
+ * Findings that would read as the same sentence are merged into one, with how
+ * many changes it covers, so the agent is not told the same thing four times.
+ * Times count from the session's first prompt and the prompt is named as the
+ * report names it, through the report's own helpers.
  */
 export function endedBy(report: SessionReport, proposed: ProposedChange): EndedChange[] {
   const ops = report.operations.filter((o) => o.file === proposed.file)
-  const last = ops.at(-1)
+  const recorded = proposed.tool_use_id === undefined ? undefined : ops.find((o) => o.toolUseId === proposed.tool_use_id)
   let ender: Operation
-  if (last !== undefined && sameCall(last, proposed)) {
-    ender = last
+  if (recorded !== undefined) {
+    ender = recorded
   } else {
     const latest = ops.reduce((m, o) => Math.max(m, Date.parse(o.at) || 0), 0)
     ender = {
@@ -79,7 +79,7 @@ export function endedBy(report: SessionReport, proposed: ProposedChange): EndedC
       kind: proposed.kind,
       at: new Date(latest + 1).toISOString(),
       uuid: 'proposed',
-      toolUseId: 'proposed',
+      toolUseId: proposed.tool_use_id ?? 'proposed',
       permissionMode: null,
       promptId: null,
       attestation: 'auto',
@@ -90,22 +90,30 @@ export function endedBy(report: SessionReport, proposed: ProposedChange): EndedC
     }
     ops.push(ender)
   }
-  const origin = report.startedAt ?? ''
-  return findUndone(proposed.file, ops, null)
-    .filter((u) => u.undoneBy === ender)
-    .map((u) => {
-      const prompt = u.introduced.promptId === null ? null : (report.prompts.find((p) => p.id === u.introduced.promptId)?.index ?? null)
-      const verb = u.kind === 'overwritten' ? 'replaced' : u.kind
-      const ref = prompt === null ? '(unattributed)' : `prompt ${prompt}`
-      return {
-        file: u.file,
-        kind: u.kind,
-        introducedAt: u.introduced.at,
-        introducedPrompt: prompt,
-        line: u.line,
-        note: `Minos: this ${verb} the change to ${shown(u.file, report.cwd)} made at ${clock(u.introduced.at, origin)} for ${ref}`,
-      }
+  const origin = sessionOrigin(report)
+  const merged = new Map<string, EndedChange>()
+  for (const u of findUndone(proposed.file, ops, null).filter((f) => f.undoneBy === ender)) {
+    const prompt = u.introduced.promptId === null ? null : (report.prompts.find((p) => p.id === u.introduced.promptId)?.index ?? null)
+    const where = sanitise(shown(u.file, report.cwd))
+    const tail = `${where} made at ${clock(u.introduced.at, origin)} for ${promptRef(report.prompts, u.introduced.promptId)}`
+    const key = `${u.kind}\u0000${tail}`
+    const seen = merged.get(key)
+    if (seen !== undefined) {
+      seen.count += 1
+      seen.note = `Minos: this ${VERB[u.kind]} ${seen.count} changes to ${tail}`
+      continue
+    }
+    merged.set(key, {
+      file: u.file,
+      kind: u.kind,
+      introducedAt: u.introduced.at,
+      introducedPrompt: prompt,
+      line: u.line,
+      count: 1,
+      note: `Minos: this ${VERB[u.kind]} the change to ${tail}`,
     })
+  }
+  return [...merged.values()]
 }
 
 /** Runs `endedBy` on the session at `paths` for the change given as JSON. */

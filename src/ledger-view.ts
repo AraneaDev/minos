@@ -1,6 +1,6 @@
 import { DECIDED_NOTE } from './caveats'
 import { clock, localStamp } from './clock'
-import { failedNote, pathCol, plural, sanitise } from './report'
+import { failedNote, pathCol, plural, promptRef, sanitise, sessionOrigin } from './report'
 import type { UndoneKind } from './reverts'
 import type { SessionReport } from './session'
 
@@ -18,6 +18,8 @@ interface LedgerUndone {
   kind: UndoneKind
   introducedAt: string
   introducedPrompt: number | null
+  /** The prompt as the report names it: `prompt N`, or `(unattributed)`. */
+  introducedRef: string
   undoneAt: string
 }
 
@@ -26,6 +28,8 @@ export interface LedgerView {
   sessionId: string
   /** The directory the session ran in; paths inside it print relative to it. */
   cwd: string
+  /** What every `+Nd` suffix counts from: the first prompt, as `minos report` counts it. */
+  origin: string
   startedAt: string | null
   /** Files per class and undone in changes, as `minos sessions` counts them. */
   counts: { decided: number; auto: number; subagent: number; undone: number }
@@ -64,6 +68,7 @@ export function buildLedgerView(report: SessionReport): LedgerView {
   return {
     sessionId: report.sessionId,
     cwd: report.cwd,
+    origin: sessionOrigin(report),
     startedAt: report.startedAt,
     counts: {
       decided: report.totals.decided.files,
@@ -78,6 +83,7 @@ export function buildLedgerView(report: SessionReport): LedgerView {
         kind: u.kind,
         introducedAt: u.introduced.at,
         introducedPrompt: promptIndex(u.introduced.promptId),
+        introducedRef: promptRef(report.prompts, u.introduced.promptId),
         undoneAt: u.undoneBy.at,
       }))
       .sort((a, b) => when(b.undoneAt) - when(a.undoneAt)),
@@ -92,20 +98,28 @@ export function shown(file: string, cwd: string): string {
   return cwd !== '' && file.startsWith(root) && file.length > root.length ? file.slice(root.length) : file
 }
 
+/** The verb a note or a ledger row uses for each way a change ends. */
+export const VERB: Record<UndoneKind, string> = { overwritten: 'replaced', reverted: 'reverted', discarded: 'discarded' }
+
+/** The units line under the counts. */
+const UNITS = '(decided, auto and subagent count files; undone counts changes)'
+
 /**
- * The ledger as text, in the report's own wording and helpers. Times are
- * counted from the session's start, so a change from an earlier day carries
- * the same `+Nd` suffix `minos undone` gives it.
+ * The ledger as lines, in the report's own wording and helpers, with the lines
+ * a display should draw quietly (the units line and the caveats) named, so the
+ * pane does not have to recognise them by their wording. Times count from the
+ * session's first prompt, the origin `minos report` uses, so a change from a
+ * later day carries the same `+Nd` suffix there and here.
  */
-export function renderLedger(view: LedgerView): string {
-  const since = view.startedAt === null ? '' : `  since ${localStamp(view.startedAt)}`
-  const origin = view.startedAt ?? ''
+export function ledgerLines(view: LedgerView): { lines: string[]; dim: string[] } {
+  const since = view.origin === '' ? '' : `  since ${localStamp(view.origin)}`
   const c = view.counts
   const out = [
     `MINOS  ledger  session ${sanitise(view.sessionId).slice(0, 8)}${since}`,
     `decided ${c.decided}  auto ${c.auto}  subagent ${c.subagent}  undone ${c.undone}`,
-    '(decided, auto and subagent count files; undone counts changes)',
+    UNITS,
   ]
+  if (view.unaskedFiles.length === 0 && view.undone.length === 0) out.push('', 'No changes yet.')
   if (view.unaskedFiles.length > 0) {
     out.push('', 'changed without being asked')
     for (const f of view.unaskedFiles) {
@@ -115,13 +129,18 @@ export function renderLedger(view: LedgerView): string {
   if (view.undone.length > 0) {
     out.push('', 'did not survive')
     for (const u of view.undone) {
-      const ref = u.introducedPrompt === null ? '(unattributed)' : `prompt ${u.introducedPrompt}`
-      out.push(`  ${pathCol(sanitise(shown(u.file, view.cwd)), 40)}${u.kind}  ${clock(u.introducedAt, origin)} (${ref}), replaced ${clock(u.undoneAt, origin)}`)
+      const at = clock(u.introducedAt, view.origin)
+      out.push(`  ${pathCol(sanitise(shown(u.file, view.cwd)), 40)}${u.kind}  ${at} (${u.introducedRef}), ${VERB[u.kind]} ${clock(u.undoneAt, view.origin)}`)
     }
   }
-  const notes: string[] = []
-  if (c.decided > 0) notes.push(`${view.decidedNote}.`)
-  if (view.failedChanges > 0) notes.push(failedNote(view.failedChanges))
-  if (notes.length > 0) out.push('', ...notes)
-  return out.join('\n')
+  const caveats: string[] = []
+  if (c.decided > 0) caveats.push(`${view.decidedNote}.`)
+  if (view.failedChanges > 0) caveats.push(failedNote(view.failedChanges))
+  if (caveats.length > 0) out.push('', ...caveats)
+  return { lines: out, dim: [UNITS, ...caveats] }
+}
+
+/** The ledger as text, as `minos ledger` prints it. */
+export function renderLedger(view: LedgerView): string {
+  return ledgerLines(view).lines.join('\n')
 }

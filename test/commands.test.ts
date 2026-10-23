@@ -41,6 +41,9 @@ test('ledger text and json agree on the counts, and json parses', async () => {
   expect(c.auto).toBeGreaterThan(0)
   expect(text).toContain(view.decidedNote)
   for (const f of view.unaskedFiles) expect(text).toContain(f.file.replace(`${view.cwd}/`, ''))
+  // The JSON carries the very text the command prints, and the lines a display dims.
+  expect(view.text).toBe(text)
+  expect(view.dim).toContain('(decided, auto and subagent count files; undone counts changes)')
 })
 
 test('export emits parseable json carrying the totals', async () => {

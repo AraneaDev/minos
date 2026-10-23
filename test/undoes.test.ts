@@ -90,11 +90,33 @@ test('a change to a file the session never touched ends nothing', () => {
   expect(endedBy(report([earlier()]), { kind: 'edit', file: '/r/other.ts', old_string: 'y', new_string: 'z' })).toEqual([])
 })
 
-test('a call the transcript already holds is not counted twice', () => {
+test('a call the transcript already holds, found by its tool_use id, is not counted twice', () => {
   const second = op('t2', { at: '2026-10-23T18:58:00Z', oldString: 'y', newString: 'z' })
-  const ended = endedBy(report([earlier(), second]), { kind: 'edit', file: '/r/src/a.ts', old_string: 'y', new_string: 'z' })
+  const ended = endedBy(report([earlier(), second]), { kind: 'edit', file: '/r/src/a.ts', old_string: 'y', new_string: 'z', tool_use_id: 't2' })
   expect(ended).toHaveLength(1)
   expect(ended[0]?.kind).toBe('overwritten')
+})
+
+test('an identical later write is judged as a new call, not mistaken for the recorded one', () => {
+  // The same content written twice: the second call is not yet in the transcript, so it ends nothing the first did not.
+  const write = op('t2', { kind: 'write', at: '2026-10-23T18:58:00Z', content: 'only this' })
+  const ended = endedBy(report([earlier(), write]), { kind: 'write', file: '/r/src/a.ts', content: 'only this', tool_use_id: 't3' })
+  expect(ended).toEqual([])
+})
+
+test('identical notes are merged into one, with how many changes it covers', () => {
+  const a = op('t1', { oldString: 'x', newString: 'y', promptId: 'p2' })
+  const b = op('t2', { oldString: 'm', newString: 'qq', promptId: 'p2' })
+  const ended = endedBy(report([a, b]), { kind: 'write', file: '/r/src/a.ts', content: 'gone' })
+  expect(ended).toHaveLength(1)
+  expect(ended[0]?.count).toBe(2)
+  expect(ended[0]?.note).toBe('Minos: this discarded 2 changes to src/a.ts made at 18:52 for prompt 2')
+})
+
+test('the note counts days from the first prompt, as minos report does, and strips control characters from the path', () => {
+  const late = op('t1', { file: '/r/src/\u202ea.ts', at: '2026-10-24T09:00:00Z', oldString: 'x', newString: 'y', promptId: 'p2' })
+  const ended = endedBy(report([late]), { kind: 'edit', file: '/r/src/\u202ea.ts', old_string: 'y', new_string: 'z' })
+  expect(ended[0]?.note).toBe('Minos: this replaced the change to src/a.ts made at 09:00+1d for prompt 2')
 })
 
 test('parseProposed rejects malformed JSON and a missing kind or file', () => {
@@ -103,6 +125,7 @@ test('parseProposed rejects malformed JSON and a missing kind or file', () => {
   expect(parseProposed('{"file":"/x"}')).toBeNull()
   expect(parseProposed('{"kind":"edit"}')).toBeNull()
   expect(parseProposed('{"kind":"edit","file":"/x","replace_all":true}')?.replace_all).toBe(true)
+  expect(parseProposed('{"kind":"edit","file":"/x","tool_use_id":"t9"}')?.tool_use_id).toBe('t9')
 })
 
 test('runUndoes exits 2 on a bad change without reading the session', async () => {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { DECIDED_NOTE } from '../src/caveats'
-import { buildLedgerView, renderLedger } from '../src/ledger-view'
+import { buildLedgerView, ledgerLines, renderLedger } from '../src/ledger-view'
 import type { SessionReport } from '../src/session'
 import type { Attestation, Operation } from '../src/types'
 
@@ -77,7 +77,7 @@ test('builds counts in the same units as minos sessions', () => {
   expect(view.sessionId).toBe('1a2b3c4d-0000')
   expect(view.decidedNote).toBe(DECIDED_NOTE)
   expect(view.undone).toEqual([
-    { file: '/r/a.ts', kind: 'overwritten', introducedAt: '2026-10-23T18:51:00Z', introducedPrompt: 2, undoneAt: '2026-10-23T18:58:00Z' },
+    { file: '/r/a.ts', kind: 'overwritten', introducedAt: '2026-10-23T18:51:00Z', introducedPrompt: 2, introducedRef: 'prompt 2', undoneAt: '2026-10-23T18:58:00Z' },
   ])
 })
 
@@ -97,7 +97,8 @@ test('lists files changed without being asked, most recent first, never decided 
 
 test('renders the counts, the units line, the file list and the undone list', () => {
   const text = renderLedger(buildLedgerView(sample()))
-  expect(text).toContain('MINOS  ledger  session 1a2b3c4d  since 2026-10-23 18:51')
+  // Since the first prompt, the origin minos report counts from, not the first record.
+  expect(text).toContain('MINOS  ledger  session 1a2b3c4d  since 2026-10-23 18:50')
   expect(text).toContain('decided 0  auto 1  subagent 1  undone 1')
   expect(text).toContain('(decided, auto and subagent count files; undone counts changes)')
   expect(text).toContain('changed without being asked')
@@ -174,4 +175,25 @@ test('truncates a long undone path with the ellipsis', () => {
   const text = renderLedger(buildLedgerView(report([a, b], { undone: [{ file, kind: 'reverted', line: null, introduced: a, undoneBy: b }] })))
   expect(text).toMatch(/^ {2}….*file\.ts +reverted/m)
   expect(text).not.toContain(file)
+})
+
+test('names each way a change ended with its own verb', () => {
+  const r = sample()
+  const u = r.undone[0]!
+  for (const [kind, verb] of [['reverted', 'reverted'], ['discarded', 'discarded'], ['overwritten', 'replaced']] as const) {
+    const text = renderLedger(buildLedgerView({ ...r, undone: [{ ...u, kind }] }))
+    expect(text).toMatch(new RegExp(`${kind}  18:51 \\(prompt 2\\), ${verb} 18:58$`, 'm'))
+  }
+})
+
+test('says No changes yet. for a session that changed nothing', () => {
+  expect(renderLedger(buildLedgerView(report([])))).toContain('No changes yet.')
+  expect(renderLedger(buildLedgerView(sample()))).not.toContain('No changes yet.')
+})
+
+test('names the lines a display should draw quietly', () => {
+  const { dim } = ledgerLines({ ...buildLedgerView(sample()), counts: { decided: 1, auto: 0, subagent: 0, undone: 0 }, failedChanges: 1 })
+  expect(dim).toContain('(decided, auto and subagent count files; undone counts changes)')
+  expect(dim.some((l) => l.startsWith('decided is inferred'))).toBe(true)
+  expect(dim.some((l) => l.startsWith('Left out 1 change'))).toBe(true)
 })
