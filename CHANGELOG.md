@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.12](https://github.com/AraneaDev/minos/compare/v0.0.11...v0.0.12) (2026-10-23)
+
+
+### Fixes
+
+* **counts:** count every class in changes, and leave temp projects out of --all ([#24](https://github.com/AraneaDev/minos/issues/24)) ([ec3fa7a](https://github.com/AraneaDev/minos/commit/ec3fa7a6468a610e97aaa31e1b7348dbf8bdc3e4))
+
 ## [0.0.11](https://github.com/AraneaDev/minos/compare/v0.0.10...v0.0.11) (2026-10-23)
 
 
