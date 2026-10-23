@@ -3,6 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { analyseSession } from '../src/session'
+import { runUndone } from '../src/commands/undone'
+import { runFile } from '../src/commands/file'
 import type { FileTotals, PromptTotals } from '../src/session'
 import { FIXTURE_DIR } from '../scripts/make-fixtures'
 
@@ -266,7 +268,10 @@ test('a failed Edit is out of the totals, the operations and undone, and its fai
       expect(open.operations.map((o) => o.toolUseId)).toEqual(['t-a1', 't-a3'])
       expect(open.totals.decided).toEqual({ files: 1, added: 2, removed: 1 })
       expect(open.undone).toEqual([])
-      expect(open.failedChanges).toEqual([{ toolUseId: 't-a2', at: '2026-09-07T09:02:00Z' }])
+      expect(open.failedChanges).toEqual([{ toolUseId: 't-a2', at: '2026-09-07T09:02:00Z', file: '/repo/a.ts' }])
+      expect(await runUndone(paths)).toContain('Left out 1 change whose tool call failed or was refused, so nothing was written.')
+      expect(await runFile(paths, 'a.ts')).toContain('Left out 1 change whose tool call failed')
+      expect(await runFile(paths, 'b.ts')).not.toContain('Left out')
       const before = await analyseSession(paths, { window: { since: null, until: '2026-09-08' } })
       expect(before.failedChanges.map((f) => f.toolUseId)).toEqual(['t-a2'])
       expect(before.operations.map((o) => o.toolUseId)).toEqual(['t-a1'])

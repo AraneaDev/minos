@@ -83,9 +83,10 @@ export interface SessionReport {
   /**
    * Edits and writes inside the window whose tool call failed or was refused,
    * so nothing changed. They are in no other count; each carries its tool_use
-   * id so an aggregate can count a forked copy once.
+   * id so an aggregate can count a forked copy once, and its file so
+   * `minos file` can say one of that file's changes was left out.
    */
-  failedChanges: { toolUseId: string; at: string }[]
+  failedChanges: { toolUseId: string; at: string; file: string }[]
 }
 
 const lines = (text: string | null): number => {
@@ -248,6 +249,6 @@ export async function analyseSession(
     failedChanges: ledger
       .failedOperations()
       .filter(inside)
-      .map((o) => ({ toolUseId: o.toolUseId, at: o.at })),
+      .map((o) => ({ toolUseId: o.toolUseId, at: o.at, file: o.file })),
   }
 }

@@ -36,6 +36,14 @@ export const pathCol = (text: string, width: number): string =>
 export const plural = (n: number, singular: string, pluralWord: string): string => `${n} ${n === 1 ? singular : pluralWord}`
 
 /**
+ * The caveat for edits and writes whose tool call failed or was refused, so a
+ * view that leaves them out says so. Shared by `minos report`, `minos undone`
+ * and `minos file`, so the three never word it differently.
+ */
+export const failedNote = (n: number): string =>
+  `Left out ${plural(n, 'change', 'changes')} whose tool call failed or was refused, so nothing was written.`
+
+/**
  * The prompt named for one side of a finding: "prompt N" when `promptId`
  * resolves against the session's own prompt list, `(unattributed)` otherwise
  * (no promptId at all, or one that resolves to nothing, which is the common
@@ -199,7 +207,7 @@ export function renderReport(report: SessionReport, options?: RenderOptions): st
     out.push(`  ${report.skippedLines} transcript lines did not parse and were skipped.`)
   }
   if (report.failedChanges.length > 0) {
-    out.push(`  Left out ${plural(report.failedChanges.length, 'change', 'changes')} whose tool call failed or was refused, so nothing was written.`)
+    out.push(`  ${failedNote(report.failedChanges.length)}`)
   }
   if (report.unattributedCount > 0) {
     out.push(

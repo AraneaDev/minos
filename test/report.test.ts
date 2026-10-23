@@ -417,8 +417,8 @@ test('changes whose tool call failed are named in one line, and a report with no
   const clean = renderReport(report)
   expect(clean).not.toContain('left out')
   const failed = [
-    { toolUseId: 'x1', at: '2026-09-07T09:00:00Z' },
-    { toolUseId: 'x2', at: '2026-09-07T09:01:00Z' },
+    { toolUseId: 'x1', at: '2026-09-07T09:00:00Z', file: '/repo/a.ts' },
+    { toolUseId: 'x2', at: '2026-09-07T09:01:00Z', file: '/repo/a.ts' },
   ]
   const text = renderReport({ ...report, failedChanges: failed })
   expect(text.split('\n')).toContain('  Left out 2 changes whose tool call failed or was refused, so nothing was written.')

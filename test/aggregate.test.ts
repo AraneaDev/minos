@@ -234,8 +234,8 @@ test('an undone change with no readable timestamp is not counted under a window'
 
 test('counts failed changes apart, once by tool_use id, inside the window', () => {
   const failed = [
-    { toolUseId: 'f1', at: '2026-09-22T10:00:00Z' },
-    { toolUseId: 'f2', at: '2026-09-21T10:00:00Z' },
+    { toolUseId: 'f1', at: '2026-09-22T10:00:00Z', file: '/r/a.ts' },
+    { toolUseId: 'f2', at: '2026-09-21T10:00:00Z', file: '/r/a.ts' },
   ]
   const a = one([report([], { failedChanges: failed }), report([], { failedChanges: [failed[0]!] })], { since: '2026-09-22', until: null })
   expect(a.failedDropped).toBe(1)
@@ -243,14 +243,14 @@ test('counts failed changes apart, once by tool_use id, inside the window', () =
 })
 
 test('renderAll says how many failed changes it left out, and nothing when there are none', () => {
-  const failed = report([], { failedChanges: [{ toolUseId: 'f1', at: '2026-09-22T10:00:00Z' }] })
+  const failed = report([], { failedChanges: [{ toolUseId: 'f1', at: '2026-09-22T10:00:00Z', file: '/r/a.ts' }] })
   expect(renderAll(one([failed]))).toContain('left out 1 change whose tool call failed or was refused, so nothing was written')
   expect(renderAll(one([report([op('t1')])]))).not.toContain('failed or was refused')
 })
 
 test('a forked copy holding a change whose error result only the other copy holds counts it as failed, not as a change', () => {
   const landed = report([op('f1', { attestation: 'auto', permissionMode: 'acceptEdits' })])
-  const failed = report([], { failedChanges: [{ toolUseId: 'f1', at: '2026-09-22T10:00:00Z' }] })
+  const failed = report([], { failedChanges: [{ toolUseId: 'f1', at: '2026-09-22T10:00:00Z', file: '/r/a.ts' }] })
   for (const reports of [
     [landed, failed],
     [failed, landed],
@@ -278,7 +278,7 @@ test('an undone finding resting on a change known failed in another copy is not 
   const introduced = op('f1', { newString: 'x' })
   const undoneBy = op('t2', { at: '2026-09-22T11:00:00Z', oldString: 'x' })
   const landed = report([introduced, undoneBy], { undone: [{ file: '/r/a.ts', line: null, kind: 'reverted', introduced, undoneBy }] as SessionReport['undone'] })
-  const failed = report([], { failedChanges: [{ toolUseId: 'f1', at: '2026-09-22T10:00:00Z' }] })
+  const failed = report([], { failedChanges: [{ toolUseId: 'f1', at: '2026-09-22T10:00:00Z', file: '/r/a.ts' }] })
   const a = one([landed, failed])
   expect(a.total.changes).toEqual({ decided: 1, auto: 0, subagent: 0, undone: 0 })
 })
