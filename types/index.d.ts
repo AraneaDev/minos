@@ -38,6 +38,8 @@ declare module 'claude-code' {
       history: Shaped<MinosHistory | null>
       /** The project's latest sessions, newest last, read when the pane opens and at each turn's end. */
       project: Shaped<MinosSession[]>
+      /** Whether the changed-files card lists every file, or folds them after the first ten. */
+      allFiles: Shaped<boolean>
     }
   }
 }
