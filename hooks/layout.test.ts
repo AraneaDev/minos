@@ -17,6 +17,10 @@ const LEDGER: MinosLedger = {
   caveats: ['decided is inferred from permission mode alone, not from a recorded approval; a standing allow rule can mean nothing was ever put on screen.'],
   empty: null,
   legend: ['decided   made in default or plan mode', 'auto      applied without asking'],
+  prompts: [
+    { ref: 'prompt 2', text: 'make the mailer use the queue, and retry twice before giving up on a message', summary: '1 file · 2 changes', files: ['src/mail.ts'] },
+    { ref: 'prompt 1', text: 'fix the login redirect', summary: '1 file · 1 change · 1 undone', files: ['src/a.ts'] },
+  ],
 }
 const EARLIER = [
   { id: 'aaaa1111-x', short: 'aaaa1111', first: '2026-10-22 09:00', last: '2026-10-22 10:00', counts: { decided: 0, auto: 4, subagent: 2, undone: 1 } },
@@ -31,7 +35,7 @@ test('every row is exactly as wide as the pane, narrow, medium and wide', () => 
       ...paneRows(LEDGER, NOTES, { file: '/repo/src/a.ts', text: 'src/a.ts: 3 operations in this session' }, room, EARLIER),
       ...paneRows({ ...LEDGER, files: [], undone: [], empty: 'No changes yet.' }, [], null, room, EARLIER),
     ]
-    for (const r of rows) expect(rowWidth(r)).toBe(room)
+    for (const r of rows) if (r.code === undefined) expect(rowWidth(r)).toBe(room)
   }
 })
 
@@ -52,7 +56,7 @@ test('a long path is cut in its folders, never in the file name', () => {
 
 test('each file name is pressable, and a card title carries its count', () => {
   const rows = paneRows(LEDGER, [], null, 100)
-  const presses = rows.flatMap((r) => r.segments.filter((s) => s.press !== undefined).map((s) => s.press))
+  const presses = rows.flatMap((r) => r.segments.filter((s) => s.press?.startsWith('file:') === true).map((s) => s.press))
   expect(presses).toEqual(['file:/repo/src/a.ts', 'file:/repo/content/en/blog/a-very-long-directory-name/judging-an-ai-safety-sprint.md'])
   const head = rows.find((r) => r.key === 'files-head')!
   expect(head.segments.map((s) => s.text).join('')).toContain('Changed without asking')
@@ -93,4 +97,35 @@ test('a long file list folds after ten, behind a press that shows them all', () 
   const open = paneRows(many, [], null, 100, [], true)
   expect(open.filter((r) => r.key.startsWith('file:'))).toHaveLength(14)
   expect(open.find((r) => r.key === 'files-toggle')!.segments.map((s) => s.text).join('')).toContain('show fewer')
+})
+
+test('the prompts card lists each prompt, pressable, with what it changed against the right edge', () => {
+  const rows = paneRows(LEDGER, [], null, 100)
+  const prompt = rows.find((r) => r.key === 'prompt-prompt 2')!
+  expect(prompt.segments.find((s) => s.press !== undefined)?.press).toBe('prompt:prompt 2')
+  const text = prompt.segments.map((s) => s.text).join('')
+  expect(text).toContain('make the mailer')
+  expect(text.trimEnd().endsWith('1 file · 2 changes')).toBe(true)
+  for (const room of [44, 160]) for (const r of paneRows(LEDGER, [], null, room)) expect(rowWidth(r)).toBe(room)
+})
+
+test('an opened file shows each change as a header and a diff block for Claude Code to draw', () => {
+  const history = {
+    file: '/repo/src/a.ts',
+    text: '',
+    edits: [
+      { at: '21:32', kind: 'edit', attestation: 'auto', prompt: 'prompt 1', diff: '@@ -3,1 +3,1 @@\n-a\n+b', numbered: true, cut: 0 },
+      { at: '21:33', kind: 'edit', attestation: 'subagent', prompt: '(unattributed)', diff: '-x\n+y', numbered: false, cut: 4 },
+    ],
+  }
+  const rows = paneRows(LEDGER, [], history, 100)
+  const blocks = rows.filter((r) => r.code !== undefined)
+  expect(blocks.map((r) => r.code)).toEqual([
+    { source: '@@ -3,1 +3,1 @@\n-a\n+b', diff: true },
+    { source: '-x\n+y', diff: false },
+  ])
+  const head = rows.find((r) => r.key === 'edit-1')!.segments.map((s) => s.text).join('')
+  expect(head).toContain('21:33')
+  expect(head).toContain('4 more lines not shown')
+  expect(rows.find((r) => r.key === 'history-head')!.segments.map((s) => s.text).join('')).toContain('2 changes')
 })

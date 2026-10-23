@@ -24,6 +24,7 @@ const DISPLAY = {
   caveats: [],
   empty: null,
   legend: [],
+  prompts: [{ ref: 'prompt 1', text: 'fix the login', summary: '1 file · 1 change', files: ['src/a.ts'] }],
 }
 const LEDGER_JSON = JSON.stringify({ text: 'unused by the pane', display: DISPLAY })
 
@@ -36,7 +37,7 @@ const cli = (run: Run) =>
       : run.argv[2] === 'ledger'
         ? { exitCode: 0, stdout: LEDGER_JSON }
         : run.argv[2] === 'file'
-      ? { exitCode: 0, stdout: 'src/a.ts: 1 operation in this session\n' }
+      ? { exitCode: 0, stdout: JSON.stringify({ file: run.argv[3], edits: [{ at: '18:52', kind: 'edit', attestation: 'auto', prompt: 'prompt 1', diff: '@@ -3,1 +3,1 @@\n-old line\n+new line', numbered: true, cut: 0 }] }) }
       : { exitCode: 0, stdout: '[]' }
 
 const ledgerRuns = (runs: Run[]) => runs.filter((r) => r.argv[2] === 'ledger').length
@@ -60,7 +61,7 @@ test('/minos opens the pane and it shows the ledger the CLI prints, on every sur
   }
 })
 
-test('pressing a file in the pane shows its history', async ($, on) => {
+test('pressing a file shows its changes as diffs, and pressing a prompt shows its files', async ($, on) => {
   const { runs } = engine(on, cli)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   const clock = mock.clock(on)
@@ -69,10 +70,14 @@ test('pressing a file in the pane shows its history', async ($, on) => {
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: 'file:/repo/src/a.ts' })
-  expect(runs.some((r) => r.argv[2] === 'file' && r.argv[3] === '/repo/src/a.ts')).toBe(true)
-  expect((await ui.find({ type: 'Text', text: /operation in this session/ }))?.text).toContain('src/a.ts: 1 operation in this session')
+  expect(runs.some((r) => r.argv[2] === 'file' && r.argv[3] === '/repo/src/a.ts' && r.argv.includes('--json'))).toBe(true)
+  expect(await ui.find({ type: 'Code' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /18:52/ })).toBeDefined()
   await ui.press({ key: 'history:close' })
-  expect(await ui.find({ type: 'Text', text: /operation in this session/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Code' })).toBeUndefined()
+  // A prompt opens its files from the ledger the pane already holds.
+  await ui.press({ key: 'prompt:prompt 1' })
+  expect(await ui.find({ type: 'Text', text: /fix the login/ })).toBeDefined()
   await ui.unmount()
 })
 
