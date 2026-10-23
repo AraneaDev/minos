@@ -5,13 +5,14 @@
  * pane's edge so nothing wraps or widens it. Pure: the words, numbers and
  * times all come from `minos ledger --json`; this only places them.
  */
-import type { MinosHistory, MinosLedger, MinosSession } from '../types'
+import type { MinosEdit, MinosHistory, MinosLedger, MinosSession } from '../types'
 import { cells, fit, fitPath, spaces } from './text'
 
 /** One run of text in a row, how it is drawn, and the press it carries. */
 export type Segment = { text: string; color?: string; bold?: boolean; dim?: boolean; italic?: boolean; press?: string }
 /** One line of the pane. */
-export type Row = { key: string; segments: Segment[] }
+/** One line of the pane, or a block of code drawn by Claude Code's own renderer (a diff), `room` wide. */
+export type Row = { key: string; segments: Segment[]; code?: { source: string; diff: boolean } }
 /** How much room the pane has: below 80 columns the tiles fold into one line. */
 export type Tier = 'narrow' | 'medium' | 'wide'
 
@@ -26,6 +27,12 @@ const HUE = { decided: 'success', auto: 'warning', subagent: 'suggestion', undon
 export const FILE_PRESS = 'file:'
 /** A press that opens another session's ledger: its id carries the session id. */
 export const SESSION_PRESS = 'session:'
+/** A press that shows one prompt's files: its id carries the prompt's reference. */
+export const PROMPT_PRESS = 'prompt:'
+/** The press that shows every prompt, or folds the list back. */
+export const PROMPTS_PRESS = 'prompts:toggle'
+/** How many prompts the card lists before it folds the rest. */
+export const PROMPTS_FOLDED = 6
 /** The press that shows every changed file, or folds the list back. */
 export const FILES_PRESS = 'files:toggle'
 /** How many changed files the card lists before it folds the rest behind a press. */
@@ -127,8 +134,34 @@ function fileRow(f: MinosLedger['files'][number], room: number): Row {
   return row(`file:${f.file}`, gap >= 2 ? [...left, { text: spaces(gap) }, ...right] : left, room)
 }
 
+/**
+ * One change as a header line (when, how, under which class and prompt) and
+ * its diff, drawn by Claude Code's diff renderer when the line is known.
+ */
+function editRows(e: MinosEdit, i: number, room: number): Row[] {
+  const hue = (HUE as Record<string, string>)[e.attestation]
+  const head = row(`edit-${i}`, [
+    { text: '  ' },
+    { text: e.at, bold: true },
+    { text: `  ${e.kind}`, dim: true },
+    { text: ` · ` , dim: true },
+    { text: e.attestation, ...(hue === undefined ? {} : { color: hue }) },
+    { text: ` · ${e.prompt}`, dim: true },
+    ...(e.cut > 0 ? [{ text: ` · ${e.cut} more lines not shown`, dim: true }] : []),
+  ], room)
+  return [head, { key: `edit-${i}-diff`, segments: [], code: { source: e.diff, diff: e.numbered } }]
+}
+
 /** Everything the pane shows, as rows `room` wide. */
-export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHistory | null, room: number, earlier: MinosSession[] = [], allFiles = false): Row[] {
+export function paneRows(
+  ledger: MinosLedger,
+  notes: string[],
+  history: MinosHistory | null,
+  room: number,
+  earlier: MinosSession[] = [],
+  allFiles = false,
+  allPrompts = false,
+): Row[] {
   const tier = tierOf(room)
   const out: Row[] = []
   const gap = (key: string) => out.push(row(key, [], room))
@@ -170,12 +203,33 @@ export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHis
     }
   }
 
+  if (ledger.prompts.length > 0) {
+    gap('prompts-gap')
+    const n = ledger.prompts.length
+    out.push(ruleRow('prompts-head', '›', 'By prompt', `${n} ${n === 1 ? 'prompt' : 'prompts'} changed something · press one for its files`, room))
+    const shown = allPrompts ? ledger.prompts : ledger.prompts.slice(0, PROMPTS_FOLDED)
+    for (const p of shown) {
+      const right: Segment[] = [{ text: p.summary, dim: true }]
+      const lead: Segment[] = [{ text: '  ' }, { text: p.ref, press: `${PROMPT_PRESS}${p.ref}` }, { text: '  ' }]
+      const room2 = room - width(lead) - width(right) - 2
+      const said: Segment[] = room2 >= 8 ? [{ text: fit(p.text, room2) }, { text: spaces(room2 - cells(fit(p.text, room2)) + 2) }] : [{ text: '  ' }]
+      out.push(row(`prompt-${p.ref}`, [...lead, ...said, ...right], room))
+    }
+    if (n > PROMPTS_FOLDED) {
+      out.push(row('prompts-toggle', [{ text: '  ' }, { text: allPrompts ? 'show fewer' : `show all ${n}`, dim: true, press: PROMPTS_PRESS }, { text: allPrompts ? '' : ` · ${n - PROMPTS_FOLDED} more`, dim: true }], room))
+    }
+  }
+
   if (history !== null) {
     gap('history-gap')
-    const lines = history.text.split('\n')
-    out.push(ruleRow('history-head', '◇', history.file.startsWith('session ') ? `Ledger of ${history.file}` : 'History', '', room))
+    const lines = history.text === '' ? [] : history.text.split('\n')
+    const edits = history.edits ?? []
+    const title = history.file.startsWith('session ') ? `Ledger of ${history.file}` : history.file.startsWith('prompt ') ? history.file : 'Edits'
+    const note = edits.length > 0 ? `${edits.length} ${edits.length === 1 ? 'change' : 'changes'}` : ''
+    out.push(ruleRow('history-head', '◇', title, note, room))
     out.push(row('history-close', [{ text: '  ' }, { text: '× close', dim: true, press: CLOSE_PRESS }], room))
     lines.forEach((l, i) => out.push(row(`history-${i}`, [{ text: `  ${l}` }], room)))
+    edits.forEach((e, i) => out.push(...editRows(e, i, room)))
   }
 
   if (ledger.undone.length > 0) {

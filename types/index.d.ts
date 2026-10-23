@@ -15,10 +15,18 @@ export type MinosLedger = {
   caveats: string[]
   empty: string | null
   legend: string[]
+  prompts: { ref: string; text: string; summary: string; files: string[] }[]
 }
 
-/** One file's history, or another session's ledger, as the CLI printed it, for what the person opened. */
-export type MinosHistory = { file: string; text: string }
+/** One change to a file as `minos file --json` gives it: when, how, and its diff. */
+export type MinosEdit = { at: string; kind: string; attestation: string; prompt: string; diff: string; numbered: boolean; cut: number }
+
+/**
+ * What the person opened in the pane: a file's changes with their diffs, a
+ * prompt's files, or another session's ledger. `title` names it; `text` is
+ * plain lines and `edits` the diffs, either of which may be empty.
+ */
+export type MinosHistory = { file: string; text: string; edits?: MinosEdit[] }
 
 /** An earlier session of this project, from `minos sessions --json`. */
 export type MinosSession = { id: string; short: string; first: string; last: string; counts: { decided: number; auto: number; subagent: number; undone: number } }
@@ -40,6 +48,8 @@ declare module 'claude-code' {
       project: Shaped<MinosSession[]>
       /** Whether the changed-files card lists every file, or folds them after the first ten. */
       allFiles: Shaped<boolean>
+      /** Whether the prompts card lists every prompt, or folds them after the first six. */
+      allPrompts: Shaped<boolean>
     }
   }
 }

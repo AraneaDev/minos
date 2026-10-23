@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { MinosHistory, MinosLedger, MinosSession } from '../types'
-import { CLOSE_PRESS, FILE_PRESS, FILES_PRESS, SESSION_PRESS, paneRows } from './layout'
+import type { MinosEdit, MinosHistory, MinosLedger, MinosSession } from '../types'
+import { CLOSE_PRESS, FILE_PRESS, FILES_PRESS, PROMPT_PRESS, PROMPTS_PRESS, SESSION_PRESS, paneRows } from './layout'
 import type { Segment } from './layout'
 import { forSession, minos } from './minos'
 
@@ -24,6 +24,9 @@ const notes = atom({ plugin: 'minos', key: 'notes' } as const, [] as string[], {
 const isOpen = atom({ plugin: 'minos', key: 'isOpen' } as const, false, { shape: 'open-1' })
 /** The file whose history the person opened in the pane, and what `minos file` said about it. */
 const history = atom({ plugin: 'minos', key: 'history' } as const, null as MinosHistory | null, { shape: 'history-1' })
+
+/** Whether the prompts card lists every prompt, or folds them after the first six. */
+const allPrompts = atom({ plugin: 'minos', key: 'allPrompts' } as const, false, { shape: 'all-prompts-1' })
 
 /** Whether the changed-files card lists every file, or folds them after the first ten. */
 const allFiles = atom({ plugin: 'minos', key: 'allFiles' } as const, false, { shape: 'all-files-1' })
@@ -56,6 +59,7 @@ const EMPTY: MinosLedger = {
   caveats: [],
   empty: 'No changes yet.',
   legend: [],
+  prompts: [],
 }
 
 /** The `display` part of the ledger JSON, or null when the output does not read as one. */
@@ -65,7 +69,7 @@ function parseLedger(stdout: string): MinosLedger | null {
     if (d === undefined || d === null || typeof d !== 'object') return null
     const counts = d.counts
     const isCounts = counts !== null && typeof counts === 'object' && (['decided', 'auto', 'subagent', 'undone'] as const).every((k) => typeof counts[k] === 'number')
-    const isLists = [d.files, d.undone, d.caveats, d.legend].every(Array.isArray)
+    const isLists = [d.files, d.undone, d.caveats, d.legend, d.prompts].every(Array.isArray)
     const isText = typeof d.session === 'string' && (d.since === null || typeof d.since === 'string') && (d.empty === null || typeof d.empty === 'string')
     return isCounts && isLists && isText ? (d as MinosLedger) : null
   } catch {
@@ -143,10 +147,29 @@ async function openSession($: EngineInterface, id: string): Promise<void> {
   await update($, history, () => ({ file: `session ${id.slice(0, 8)}`, text: run.ok ? run.stdout.trimEnd() : `Minos could not read that session: ${run.error}` }))
 }
 
-/** Shows one file's history in the pane, as `minos file` prints it. */
+/** Shows one file's changes in the pane, each with its diff, as `minos file --json` gives them. */
 async function openHistory($: EngineInterface, file: string): Promise<void> {
-  const run = await forSession($, ['file', file])
-  await update($, history, () => ({ file, text: run.ok ? run.stdout.trimEnd() : `Minos could not read this file's history: ${run.error}` }))
+  const run = await forSession($, ['file', file, '--json'])
+  let edits: MinosEdit[] | null = null
+  if (run.ok) {
+    try {
+      const parsed = (JSON.parse(run.stdout) as { edits?: unknown }).edits
+      if (Array.isArray(parsed)) edits = parsed as MinosEdit[]
+    } catch {
+      edits = null
+    }
+  }
+  await update($, history, () =>
+    edits !== null ? { file, text: '', edits } : { file, text: `Minos could not read this file's changes: ${run.ok ? 'the answer did not read as JSON' : run.error}` },
+  )
+}
+
+/** Shows the files one prompt changed, from the ledger the pane already holds. */
+async function openPrompt($: EngineInterface, ref: string): Promise<void> {
+  const ledger = await read($, view)
+  const prompt = ledger?.prompts.find((p) => p.ref === ref)
+  if (prompt === undefined) return
+  await update($, history, () => ({ file: ref, text: [prompt.text, prompt.summary, '', ...prompt.files].join('\n') }))
 }
 
 /** A plain segment's text style. */
@@ -188,18 +211,39 @@ export function livePane(on: On): void {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
-    const [ledger, failed, raised, opened, earlier, everyFile] = await Promise.all([read($, view), read($, error), read($, notes), read($, history), read($, project), read($, allFiles)])
+    const { Box, Button, Code, Text } = $.ui.resolve(e)
+    const [ledger, failed, raised, opened, earlier, everyFile, everyPrompt] = await Promise.all([
+      read($, view),
+      read($, error),
+      read($, notes),
+      read($, history),
+      read($, project),
+      read($, allFiles),
+      read($, allPrompts),
+    ])
     const room = Math.max(20, e.props.bodyColumns)
     if (failed !== null) return <Text wrap="truncate-end" color="error">Minos could not run: {failed}</Text>
     if (ledger === null) return <Text dimColor>Reading this session's ledger…</Text>
-    const press = (id: string) =>
-      id === FILES_PRESS
-        ? update($, allFiles, (all) => !all)
-        : id === CLOSE_PRESS ? update($, history, () => null) : id.startsWith(SESSION_PRESS) ? openSession($, id.slice(SESSION_PRESS.length)) : openHistory($, id.slice(FILE_PRESS.length))
+    const press = async (id: string): Promise<unknown> => {
+      if (id === FILES_PRESS) return update($, allFiles, (all) => !all)
+      if (id === PROMPTS_PRESS) return update($, allPrompts, (all) => !all)
+      if (id === CLOSE_PRESS) return update($, history, () => null)
+      if (id.startsWith(PROMPT_PRESS)) return openPrompt($, id.slice(PROMPT_PRESS.length))
+      if (id.startsWith(SESSION_PRESS)) return openSession($, id.slice(SESSION_PRESS.length))
+      return openHistory($, id.slice(FILE_PRESS.length))
+    }
     return (
       <Box flexDirection="column">
-        {paneRows(ledger, raised, opened, room, earlier, everyFile).map((line) => (
+        {paneRows(ledger, raised, opened, room, earlier, everyFile, everyPrompt).map((line) => (
+          line.code !== undefined ? (
+            <Box key={line.key} width={room} overflow="hidden" paddingLeft={2}>
+              {line.code.diff ? (
+                <Code source={line.code.source} format="diff" wrap="truncate-end" />
+              ) : (
+                <Code source={line.code.source} language="diff" wrap="truncate-end" />
+              )}
+            </Box>
+          ) : (
           <Box key={line.key} width={room} overflow="hidden">
             {line.segments.map((s) =>
               s.press === undefined ? (
@@ -211,6 +255,7 @@ export function livePane(on: On): void {
               ),
             )}
           </Box>
+          )
         ))}
       </Box>
     )

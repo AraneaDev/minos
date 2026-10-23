@@ -39,6 +39,17 @@ export interface LedgerView {
   undone: LedgerUndone[]
   failedChanges: number
   decidedNote: string
+  /** The prompts that changed something, most recent first, with the files each changed. */
+  prompts: LedgerPrompt[]
+}
+
+/** One prompt that changed something: its number, its first line, and what it changed. */
+interface LedgerPrompt {
+  index: number
+  text: string
+  files: string[]
+  changes: number
+  undone: number
 }
 
 /** Instants compare as time, not text, so an offset in a transcript timestamp cannot misorder them. */
@@ -89,6 +100,19 @@ export function buildLedgerView(report: SessionReport): LedgerView {
       .sort((a, b) => when(b.undoneAt) - when(a.undoneAt)),
     failedChanges: report.failedChanges.length,
     decidedNote: DECIDED_NOTE,
+    prompts: report.byPrompt
+      .map((p) => {
+        const ops = report.operations.filter((o) => o.promptId === p.prompt.id)
+        return {
+          index: p.prompt.index,
+          text: p.prompt.text.split('\n').find((l) => l.trim() !== '') ?? '',
+          files: [...new Set(ops.map((o) => o.file))],
+          changes: ops.length,
+          undone: p.undone,
+        }
+      })
+      .filter((p) => p.changes > 0)
+      .reverse(),
   }
 }
 
@@ -130,6 +154,8 @@ export interface LedgerDisplay {
   empty: string | null
   /** What each count means, one line per class, for a reader who has not met the classes yet. */
   legend: string[]
+  /** The prompts that changed something, most recent first, as the report names them. */
+  prompts: { ref: string; text: string; summary: string; files: string[] }[]
 }
 
 /** The ledger's display strings, for the text form and for a pane. */
@@ -160,6 +186,12 @@ export function ledgerDisplay(view: LedgerView): LedgerDisplay {
     caveats,
     empty: c.decided === 0 && view.unaskedFiles.length === 0 && view.undone.length === 0 ? 'No changes yet.' : null,
     legend: LEGEND,
+    prompts: view.prompts.map((p) => ({
+      ref: `prompt ${p.index}`,
+      text: sanitise(p.text),
+      summary: [plural(p.files.length, 'file', 'files'), plural(p.changes, 'change', 'changes'), ...(p.undone > 0 ? [`${p.undone} undone`] : [])].join(' · '),
+      files: p.files.map((f) => sanitise(shown(f, view.cwd))),
+    })),
   }
 }
 

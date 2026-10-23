@@ -20,13 +20,13 @@ const BARE_FLAGS = ['all', 'json'] as const
 
 /**
  * Usage text for `--help`/`-h`, naming the real commands and only the flags
- * each one actually accepts. `--json` is listed for `ledger` and `sessions`,
- * the commands that take it.
+ * each one actually accepts. `--json` is listed for `ledger`, `sessions` and
+ * `file`, the commands that take it.
  */
 const USAGE = `minos: reports what a Claude Code session changed, and which of it was ever put to you as a decision.
 
   minos report [--session <id>] [--project <path>]   the default; latest session for the cwd
-  minos file <path> [--session <id>] [--project <path>]   one file's operation history in the session
+  minos file <path> [--session <id>] [--project <path>] [--json]   one file's operation history in the session
   minos undone [--session <id>] [--project <path>]   the undone changes on their own
   minos sessions [--limit <n>] [--project <path>] [--json]     sessions with headline counts, to pick one
   minos sessions --all                                every project, with totals
@@ -158,8 +158,8 @@ export async function main(argv: string[], stdin?: () => Promise<string>): Promi
     return 2
   }
 
-  if (args.includes('--json') && command !== 'ledger' && command !== 'sessions') {
-    console.error('minos: --json only applies to ledger and sessions')
+  if (args.includes('--json') && command !== 'ledger' && command !== 'sessions' && command !== 'file') {
+    console.error('minos: --json only applies to ledger, sessions and file')
     return 2
   }
   if (args.includes('--json') && args.includes('--all')) {
@@ -282,7 +282,11 @@ export async function main(argv: string[], stdin?: () => Promise<string>): Promi
     if (json) console.log(out)
     else show(out)
   }
-  else if (command === 'file') show(await runFile(paths, target as string))
+  else if (command === 'file') {
+    const out = await runFile(paths, target as string, args.includes('--json'))
+    if (args.includes('--json')) console.log(out)
+    else show(out)
+  }
   else show(await runReport(paths))
 
   return 0
