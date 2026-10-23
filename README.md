@@ -130,7 +130,8 @@ minos report        the default; the latest session for this directory
 minos file <path>   one file's operation history in that session
 minos undone        the changes that did not survive, on their own
 minos sessions      sessions with headline counts, to pick one
-minos sessions --all   every project under ~/.claude/projects, with totals
+minos sessions --all
+                    every project under ~/.claude/projects, with totals
 minos export        the ledger as data, JSON
 minos export --all  every project's counts as data, JSON
 ```
@@ -161,8 +162,10 @@ tool_use id so a forked or resumed session does not count the same call twice. A
 per recorded permission mode, and a line says how many duplicates were dropped. A history line gives
 the oldest and newest transcript, and the project directories that have no transcripts left. Claude
 Code prunes old transcripts (`cleanupPeriodDays`), so `--all` only covers what has not been pruned
-yet, and the totals will shrink as that happens. A separate line counts shell commands that look
-like file writes. It is a loose heuristic, and those commands are never counted in the classes.
+yet, and the totals will shrink as that happens. A project with no session in the window gets no
+row, and one line under the table counts those projects instead. A separate line counts shell
+commands that look like file writes, leaving out any call that failed or was denied. It is a loose
+heuristic, and those commands are never counted in the classes.
 
 In Claude Code, `/minos` prints the report for the session you are in.
 
