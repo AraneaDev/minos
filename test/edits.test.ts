@@ -53,3 +53,9 @@ test('only the matching files are returned', () => {
   const ops = [op('t1', { file: '/r/a.ts', oldString: 'a', newString: 'b' }), op('t2', { file: '/r/b.ts', oldString: 'a', newString: 'b' })]
   expect(fileEdits(report(ops), (f) => f.endsWith('/b.ts'))).toHaveLength(1)
 })
+
+test('lines an edit only carried for context are drawn as context, not as removed and added again', () => {
+  const ops = [op('t1', { kind: 'write', content: 'a\nb\nc\nd\n' }), op('t2', { at: '2026-10-23T18:53:00Z', oldString: 'b\nc\nd', newString: 'b\nC\nd' })]
+  const [, e] = fileEdits(report(ops), all)
+  expect(e!.diff).toBe('@@ -2,3 +2,3 @@\n b\n-c\n+C\n d')
+})

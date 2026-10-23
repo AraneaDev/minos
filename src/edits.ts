@@ -33,9 +33,24 @@ const linesOf = (text: string | null): string[] => {
   return (text.endsWith('\n') ? text.slice(0, -1) : text).split('\n')
 }
 
-/** `-` lines then `+` lines, cut to MAX_DIFF_LINES, and how many were cut. */
+/**
+ * The change as diff lines: the lines old and new share at either end as
+ * context (` `), the rest as `-` then `+` lines, cut to MAX_DIFF_LINES. An
+ * Edit's strings usually carry a line or two around what changed so the tool
+ * can find its place; drawn as removed and added again, those lines would
+ * claim a change that never happened.
+ */
 function body(removed: string[], added: string[]): { lines: string[]; cut: number } {
-  const all = [...removed.map((l) => `-${l}`), ...added.map((l) => `+${l}`)]
+  let head = 0
+  while (head < removed.length && head < added.length && removed[head] === added[head]) head++
+  let tail = 0
+  while (tail < removed.length - head && tail < added.length - head && removed[removed.length - 1 - tail] === added[added.length - 1 - tail]) tail++
+  const all = [
+    ...removed.slice(0, head).map((l) => ` ${l}`),
+    ...removed.slice(head, removed.length - tail).map((l) => `-${l}`),
+    ...added.slice(head, added.length - tail).map((l) => `+${l}`),
+    ...added.slice(added.length - tail).map((l) => ` ${l}`),
+  ]
   return { lines: all.slice(0, MAX_DIFF_LINES), cut: Math.max(0, all.length - MAX_DIFF_LINES) }
 }
 
