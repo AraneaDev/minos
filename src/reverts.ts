@@ -14,11 +14,71 @@ export interface Undone {
   undoneBy: Operation
 }
 
+/** The lines of a text, trimmed, for comparing what a change added with what later ones remove. */
+const trimmedLines = (text: string | null): string[] => (text === null ? [] : text.split('\n').map((l) => l.trim()))
+
+/** A line that says something on its own: a letter or a digit in it, not only braces and punctuation. */
+const significant = (line: string): boolean => /[\p{L}\p{N}]/u.test(line)
+
 /**
- * Finds the changes a later operation ended. Detection is string-level, so it
- * works without a base to replay from; the replay only supplies the line
- * number. Each introducing operation is reported at most once, by the first
- * operation that ended it.
+ * What became of one change, judged line by line: the significant lines it
+ * added (in its new text, not its old) are followed through every later
+ * operation on the file. An Edit that takes a line out of its old text and not
+ * into its new one removes it; one that puts it in, or a Write that holds it,
+ * brings it back. The change did not survive when more than half of its lines
+ * are gone at the end, and, when the file's final content is known, more than
+ * half are missing from that too.
+ *
+ * Returns the operation after which most of it was gone and how (`discarded` for a
+ * Write, `reverted` when that operation put back what the change had taken
+ * out, `overwritten` otherwise); null when it survived; `unjudged` when it
+ * added no significant line, which the whole-text rule then judges.
+ */
+function lineFate(introduced: Operation, later: Operation[], finalContent: string | null): { by: Operation; kind: UndoneKind } | null | 'unjudged' {
+  const before = new Set(introduced.kind === 'write' ? [] : trimmedLines(introduced.oldString))
+  const addedText = introduced.kind === 'write' ? introduced.content : introduced.newString
+  const lines = [...new Set(trimmedLines(addedText).filter((l) => significant(l) && !before.has(l)))]
+  if (lines.length === 0) return 'unjudged'
+  const present = new Set(lines)
+  let by: Operation | null = null
+  // A line is looked for as text, as the whole-text rule looks for a change:
+  // finding it inside a longer line keeps it alive, which can only ever make
+  // a change look surviving, never undone.
+  const holds = (text: string | null, l: string): boolean => text !== null && text.includes(l)
+  // Gone means more than half of what it added: a rewrite that keeps an
+  // import line still discards the file it replaced, and a fix to one line
+  // of a file the session wrote does not undo the write.
+  const gone = (left: number): boolean => left * 2 < lines.length
+  for (const op of later) {
+    const wasGone = gone(present.size)
+    if (op.kind === 'write') {
+      for (const l of lines) {
+        if (holds(op.content, l)) present.add(l)
+        else present.delete(l)
+      }
+    } else {
+      for (const l of lines) {
+        if (holds(op.oldString, l) && !holds(op.newString, l)) present.delete(l)
+        else if (holds(op.newString, l) && !holds(op.oldString, l)) present.add(l)
+      }
+    }
+    if (!wasGone && gone(present.size)) by = op
+    if (!gone(present.size)) by = null
+  }
+  if (by === null) return null
+  if (finalContent !== null && !gone(lines.filter((l) => finalContent.includes(l)).length)) return null
+  if (by.kind === 'write') return { by, kind: 'discarded' }
+  const takenOut = introduced.kind === 'write' ? [] : trimmedLines(introduced.oldString).filter((l) => significant(l) && !trimmedLines(addedText).includes(l))
+  const reverted = takenOut.length > 0 && takenOut.every((l) => holds(by.newString, l))
+  return { by, kind: reverted ? 'reverted' : 'overwritten' }
+}
+
+/**
+ * Finds the changes a later operation ended. Each change is judged line by
+ * line first (`lineFate`); one that added only punctuation falls back to the
+ * whole-text rule below. Detection is text-level, so it works without a base
+ * to replay from; the replay only supplies the line number. Each introducing
+ * operation is reported at most once, by the operation that ended it.
  *
  * A candidate is confirmed against the reconstructed final content whenever
  * that content is recoverable, to avoid false positives from incidental
@@ -40,6 +100,16 @@ export function findUndone(file: string, ops: Operation[], base: string | null):
     if (introduced === undefined) continue
     const added = introduced.kind === 'write' ? introduced.content : introduced.newString
     if (added === null || added === '') continue
+
+    // Line by line first: an agent takes a change back by editing the
+    // smallest snippet that finds its place, which rarely carries the
+    // change's whole new text. A change whose added lines carry nothing
+    // significant (braces, blank lines) falls through to the whole-text rule.
+    const fate = lineFate(introduced, ops.slice(i + 1), finalContent ?? null)
+    if (fate !== 'unjudged') {
+      if (fate !== null) found.push({ file, kind: fate.kind, line: steps[i]?.line ?? null, introduced, undoneBy: fate.by })
+      continue
+    }
 
     for (let j = i + 1; j < ops.length; j += 1) {
       const later = ops[j]

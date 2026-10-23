@@ -667,9 +667,10 @@ describe('every project at once', () => {
     expect(lines[0]).toBe('MINOS  all projects  window 2026-09-01 to 2026-09-30')
     expect(lines[1]).toBe('counts are changes: one Edit, Write or NotebookEdit tool call each, deduplicated by tool_use id')
     expect(lines[3]).toBe('project  sessions  decided  auto  subagent  undone')
-    expect(lines[4]).toBe('/repo/a         2        0     3         0       0')
+    // The Write of x.ts is undone: the Edit after it replaced its only line, which the whole-text rule missed over a trailing newline.
+    expect(lines[4]).toBe('/repo/a         2        0     3         0       1')
     expect(lines[5]).toBe('/repo/b         1        1     0         0       0')
-    expect(lines[6]).toBe('total           3        1     3         0       0')
+    expect(lines[6]).toBe('total           3        1     3         0       1')
     expect(lines).toContain('auto by mode: acceptEdits 3')
     expect(lines).toContain('shell commands matching a write pattern (a loose heuristic, not counted above: it misses some writes, and many matches write outside the repository): decided 0, auto 0, subagent 0')
     expect(lines).toContain('dropped 1 duplicate change copied between forked or resumed sessions')
@@ -736,7 +737,7 @@ describe('every project at once', () => {
     const all = await collectAll(OPEN)
     expect(all.projects.find((p) => p.dir.endsWith('-repo-c'))?.changes.auto).toBe(1)
     const lines = renderAll(all).split('\n')
-    expect(lines.find((l) => l.startsWith('total'))).toBe('total           4        1     3         0       0')
+    expect(lines.find((l) => l.startsWith('total'))).toBe('total           4        1     3         0       1')
     expect(lines).toContain('a change copied into another project counts in both rows and once in the total')
   })
 
