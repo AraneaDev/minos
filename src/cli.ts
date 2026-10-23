@@ -139,7 +139,7 @@ export async function main(argv: string[]): Promise<number> {
       console.error(`minos: --limit must be a positive integer, got "${typed}"`)
       return 2
     }
-    const listing = await runSessions(cwd, limit)
+    const listing = await runSessions(cwd, limit, { since: null, until: null })
     if (listing === null) {
       console.error(`minos: no transcript found for ${cwd}`)
       return 1

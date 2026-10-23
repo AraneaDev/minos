@@ -6,6 +6,10 @@ import { resolveSession, runReport } from '../src/commands/report'
 import { runUndone } from '../src/commands/undone'
 import { runFile } from '../src/commands/file'
 import { runSessions } from '../src/commands/sessions'
+import { localStamp } from '../src/clock'
+import type { Window } from '../src/window'
+
+const OPEN: Window = { since: null, until: null }
 import { runExport } from '../src/commands/export'
 import { main } from '../src/cli'
 import { encodeProjectSlug } from '../src/paths'
@@ -235,7 +239,7 @@ describe('commands that resolve a session against the transcript store', () => {
   // runSessions: the "no store" branch. A regression that threw instead of
   // reporting, or that reported success, would break this.
   test('sessions returns nothing at all when there is no transcript store for the directory', async () => {
-    expect(await runSessions('/root/nothing-here', 10)).toBeNull()
+    expect(await runSessions('/root/nothing-here', 10, OPEN)).toBeNull()
   })
 
   // Finding 1: runSessions passed `subagents: []` to every row's analyseSession
@@ -262,8 +266,9 @@ describe('commands that resolve a session against the transcript store', () => {
     }
     await writeFile(join(subagentsDir, 'agent-1.jsonl'), JSON.stringify(subagentChange))
 
-    const text = await runSessions(cwd, 10)
-    expect(text).toBe('sess-sub  decided 0  auto 0  subagent 1  undone 0')
+    const text = await runSessions(cwd, 10, OPEN)
+    const stamp = localStamp('2026-09-07T10:00:00Z')
+    expect((text ?? '').split('\n')[2]).toBe(`sess-sub  ${stamp}  ${localStamp('2026-09-07T10:01:00Z')}        0     0         1       0`)
   })
 
   // runSessions: the listing branch, plus the limit. Two sessions are
@@ -296,15 +301,33 @@ describe('commands that resolve a session against the transcript store', () => {
     ]
     await writeFile(join(projectDir, 'sess-002.jsonl'), sessionB.map((r) => JSON.stringify(r)).join('\n'))
 
-    const full = await runSessions(cwd, 10)
+    const full = await runSessions(cwd, 10, OPEN)
     expect(full).not.toBeNull()
-    const lines = (full ?? '').split('\n')
+    const lines = (full ?? '').split('\n').slice(2)
     expect(lines.length).toBe(2)
-    expect(lines[0]).toBe('sess-001  decided 1  auto 0  subagent 0  undone 0')
-    expect(lines[1]).toBe('sess-002  decided 0  auto 1  subagent 0  undone 1')
+    expect(lines[0]).toEndWith('        1     0         0       0')
+    expect(lines[1]).toEndWith('        0     1         0       1')
+    expect(lines[0]!.startsWith('sess-001')).toBe(true)
+    expect(lines[1]!.startsWith('sess-002')).toBe(true)
 
-    const limited = await runSessions(cwd, 1)
-    expect((limited ?? '').split('\n')).toEqual([lines[1]])
+    const limited = await runSessions(cwd, 1, OPEN)
+    expect((limited ?? '').split('\n').slice(2)).toEqual([lines[1]!])
+
+    // The span reads from the first record to the last, on the reader's clock,
+    // and the header says what the three count columns count.
+    expect(lines[1]).toContain(`${localStamp('2026-09-02T10:00:00Z')}  ${localStamp('2026-09-02T10:02:00Z')}`)
+    const header = (full ?? '').split('\n').slice(0, 2)
+    expect(header[0]).toBe('session   first             last              decided  auto  subagent  undone')
+    expect(header[1]).toBe('          (decided, auto and subagent count files; undone counts changes)')
+
+    // A window leaves out sessions that ended before it and says what it was.
+    const windowed = (await runSessions(cwd, 10, { since: '2026-09-02', until: null })) ?? ''
+    const kept = windowed.split('\n')
+    expect(kept.filter((l) => l.startsWith('sess-')).map((l) => l.slice(0, 8))).toEqual(['sess-002'])
+    expect(kept.at(-1)).toBe('window: 2026-09-02 to today')
+    const before = (await runSessions(cwd, 10, { since: null, until: '2026-09-01' })) ?? ''
+    expect(before.split('\n').filter((l) => l.startsWith('sess-')).map((l) => l.slice(0, 8))).toEqual(['sess-001'])
+    expect(before.split('\n').at(-1)).toBe('window: start of history to 2026-09-01')
   })
 
   test('sessions lists every session of a project recorded under two paths, and says so once', async () => {
@@ -316,7 +339,7 @@ describe('commands that resolve a session against the transcript store', () => {
     await writeFile(join(projectDir, 'sess-001.jsonl'), record('sess-001', '/root/site'))
     await writeFile(join(projectDir, 'sess-002.jsonl'), record('sess-002', cwd))
 
-    const lines = ((await runSessions(cwd, 10)) ?? '').split('\n')
+    const lines = ((await runSessions(cwd, 10, OPEN)) ?? '').split('\n')
     const notice = 'recorded under 2 paths: /home/tim/site, /root/site'
     expect(lines[0]).toBe(notice)
     expect(lines.filter((l) => l === notice).length).toBe(1)
