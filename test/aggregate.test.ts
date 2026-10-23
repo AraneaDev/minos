@@ -142,3 +142,21 @@ test('sorts projects by total changes and carries the empty-directory count', ()
   expect(a.emptyProjectDirs).toBe(4)
   expect(a.total.firstAt).not.toBeNull()
 })
+
+test('does not count duplicates of operations outside the window', () => {
+  const old = op('t1', { at: '2026-01-05T00:00:00Z' })
+  const a = one([report([old], { sessionId: 'p' }), report([old], { sessionId: 'f' })], {
+    since: '2026-09-01',
+    until: null,
+  })
+  expect(a.duplicatesDropped).toBe(0)
+})
+
+test('keeps a project span to its counted sessions', () => {
+  const old = report([op('t1', { at: '2026-01-05T00:00:00Z' })])
+  const recent = report([op('t2', { at: '2026-09-22T10:00:00Z' })])
+  const a = one([old, recent], { since: '2026-09-01', until: null })
+  expect(a.projects[0]!.firstAt).toBe('2026-09-22T10:00:00Z')
+  expect(a.total.firstAt).toBe('2026-09-22T10:00:00Z')
+  expect(a.oldestTranscript).toBe('2026-01-05T00:00:00Z')
+})

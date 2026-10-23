@@ -30,9 +30,9 @@ interface ProjectAggregate {
   changes: ClassCounts
   /** Auto operations per recorded permission mode; a null mode counts as 'unknown'. */
   autoModes: Record<string, number>
-  /** The earliest startedAt among its sessions, as written. */
+  /** The earliest startedAt among its counted sessions, as written. */
   firstAt: string | null
-  /** The latest endedAt among its sessions, as written. */
+  /** The latest endedAt among its counted sessions, as written. */
   lastAt: string | null
 }
 
@@ -43,7 +43,7 @@ export interface Aggregate {
   projects: ProjectAggregate[]
   /** Directory '(all)', deduplicated across every project. */
   total: ProjectAggregate
-  /** Operations seen more than once by tool_use id. */
+  /** Operations inside the window seen more than once by tool_use id. */
   duplicatesDropped: number
   /** Operations with no parseable timestamp, dropped only when a window is set. */
   undatedDropped: number
@@ -80,6 +80,8 @@ class Tally {
   sessions = 0
   firstAt: string | null = null
   lastAt: string | null = null
+  oldest: string | null = null
+  newest: string | null = null
   duplicates = 0
   undated = 0
   private readonly seen = new Set<string>()
@@ -90,7 +92,7 @@ class Tally {
   /** Count one operation unless its tool_use id was seen or it falls outside the window. */
   add(op: Operation): void {
     if (this.seen.has(op.toolUseId)) {
-      this.duplicates++
+      if (inWindow(op.at, this.window)) this.duplicates++
       return
     }
     this.seen.add(op.toolUseId)
@@ -118,7 +120,10 @@ class Tally {
     for (const u of report.undone) this.addUndone(u.introduced)
     const touched = report.operations.some((o) => inWindow(o.at, this.window))
     const spans = [report.startedAt, report.endedAt].some((t) => t !== null && inWindow(t, this.window))
-    if (touched || spans) this.sessions++
+    this.oldest = earlier(this.oldest, report.startedAt)
+    this.newest = later(this.newest, report.endedAt)
+    if (!touched && !spans) return
+    this.sessions++
     this.firstAt = earlier(this.firstAt, report.startedAt)
     this.lastAt = later(this.lastAt, report.endedAt)
   }
@@ -175,7 +180,7 @@ export function aggregate(
     duplicatesDropped: total.duplicates,
     undatedDropped: total.undated,
     emptyProjectDirs,
-    oldestTranscript: total.firstAt,
-    newestTranscript: total.lastAt,
+    oldestTranscript: total.oldest,
+    newestTranscript: total.newest,
   }
 }
