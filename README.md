@@ -37,9 +37,9 @@ overwritten at 19:41 by a later turn working on something else is invisible in t
 because the final diff only shows the last state. Minos has both, and names the prompt behind each
 wherever the transcript lets it.
 
-Nothing is captured while you work. The live view's hooks read only the transcript Claude Code
-already writes, so Minos can answer for sessions that happened before you installed it, for as
-long as Claude Code still keeps their transcripts.
+Nothing is captured while you work: the live view's hooks read only the transcript Claude Code
+already writes. Because that transcript is all Minos reads, it can also answer for sessions that
+happened before you installed it, for as long as Claude Code still keeps their transcripts.
 
 ![The minos report for the session that built Minos: 57 files changed, none of them decided, 54 of
 them applied inside a subagent, and 28 changes that did not survive the
@@ -183,8 +183,8 @@ In Claude Code, `/minos:report` prints the report for the session you are in.
 The plugin also shows the ledger while the session runs, for you and for the agent:
 
 - `/minos` opens a pane beside the chat with the session's decided, auto, subagent and
-  undone counts and the files changed without you being asked. It refreshes after each change
-  and at the end of each turn.
+  undone counts and the files changed without you being asked. While it is open it refreshes
+  after each change and at the end of each turn, and pressing a file shows that file's history.
 - The agent gets a `minos_ledger` tool with the same text. Its description asks the agent to
   call it before saying the work is done, and before writing a commit message or a PR
   description, so a summary cannot leave out what a subagent changed.
@@ -193,8 +193,8 @@ The plugin also shows the ledger while the session runs, for you and for the age
   ever blocked. The check covers Edit and Write, not NotebookEdit, and it gives up after 1.5
   seconds, so on a transcript of hundreds of megabytes the line can be missing.
 
-All three ask the CLI and show what it prints, so the pane, the tool and `minos report` never
-disagree. They need Claude Code 2.1.309 or newer, which runs a plugin's hooks module. On an
+All three ask the CLI and show what it prints, so the pane and the tool use the same counts and
+wording as `minos report`. The pane can trail the transcript by a second or so after a change. They need Claude Code 2.1.309 or newer, which runs a plugin's hooks module. On an
 older version the CLI and `/minos:report` work as before.
 
 ## What it does not do

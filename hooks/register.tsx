@@ -28,22 +28,22 @@ export const register: Register = (on) => {
 
   on('tool.call', { tool: 'Edit' }, async ($, e, next) => {
     const ran = await next(e)
-    schedule($)
-    return noteUndo($, { kind: 'edit', file: e.file_path, old_string: e.old_string, new_string: e.new_string, replace_all: e.replace_all === true }, ran)
+    void schedule($)
+    return noteUndo($, { kind: 'edit', file: e.file_path, old_string: e.old_string, new_string: e.new_string, replace_all: e.replace_all === true, tool_use_id: e.tool_use_id }, ran)
   })
   on('tool.call', { tool: 'Write' }, async ($, e, next) => {
     const ran = await next(e)
-    schedule($)
-    return noteUndo($, { kind: 'write', file: e.file_path, content: e.content }, ran)
+    void schedule($)
+    return noteUndo($, { kind: 'write', file: e.file_path, content: e.content, tool_use_id: e.tool_use_id }, ran)
   })
   on('tool.call', { tool: 'NotebookEdit' }, async ($, e, next) => {
     const ran = await next(e)
-    schedule($)
+    void schedule($)
     return ran
   })
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
     const ran = await next(e)
-    schedule($)
+    void schedule($)
     return ran
   })
 }

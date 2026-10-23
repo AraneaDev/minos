@@ -36,25 +36,37 @@ export async function minos(
 /**
  * The flags that name this session to the CLI: its id and its directory.
  * Passing the directory keeps the CLI from guessing it from wherever Bun was
- * started.
+ * started. Null when the engine cannot say, which callers treat as a run that
+ * failed.
  */
-export async function sessionArgs($: EngineInterface): Promise<string[]> {
-  return ['--session', await $.session.id(), '--project', await $.session.cwd()]
+export async function sessionArgs($: EngineInterface): Promise<string[] | null> {
+  try {
+    return ['--session', await $.session.id(), '--project', await $.session.cwd()]
+  } catch {
+    return null
+  }
 }
 
 /**
- * Runs a CLI command for this session. When the CLI knows no session by this
- * id (a session id that does not name its transcript, as can happen after a
- * resume), it is asked again for the project's newest session, which is the
- * one this session is writing.
+ * Runs a CLI command for this session, and never throws. When the CLI knows no
+ * session by this id (a session id that does not name its transcript, as can
+ * happen after a resume), it is asked again for the project's newest session,
+ * unless `fallback` is false: the newest session is whichever wrote last, which
+ * is close enough for the pane and the tool but not for a note about this very
+ * call. Both runs share one deadline, so the fallback never doubles the budget.
  */
 export async function forSession(
   $: EngineInterface,
   command: string[],
-  init: { stdin?: string; timeoutMs?: number } = {},
+  init: { stdin?: string; timeoutMs?: number; fallback?: boolean } = {},
 ): Promise<MinosResult> {
   const named = await sessionArgs($)
-  const first = await minos($, [...command, ...named], init)
-  if (first.ok || !first.error.includes('no session matching')) return first
-  return minos($, [...command, '--project', named[3] as string], init)
+  if (named === null) return { ok: false, error: 'the engine did not name this session' }
+  const budget = init.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const started = Date.now()
+  const first = await minos($, [...command, ...named], { stdin: init.stdin, timeoutMs: budget })
+  if (first.ok || init.fallback === false || !first.error.includes('no session matching')) return first
+  const left = budget - (Date.now() - started)
+  if (left <= 0) return first
+  return minos($, [...command, '--project', named[3] as string], { stdin: init.stdin, timeoutMs: left })
 }

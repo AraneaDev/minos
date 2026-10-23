@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { engine, start } from './testkit'
+import type { Run } from './testkit'
 
 const PANE = {
   plugin: 'minos',
@@ -9,71 +10,113 @@ const PANE = {
   props: { title: 'Minos', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
 } as const
 
-const LEDGER_TEXT = [
+/** The `/minos` command as a person runs it at the terminal prompt. */
+const OPEN = { command: 'minos', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 160 } } as const
+
+const UNITS = '(decided, auto and subagent count files; undone counts changes)'
+const TEXT = [
   'MINOS  ledger  session sess-1  since 2026-10-23 18:51',
   'decided 0  auto 1  subagent 0  undone 0',
-  '(decided, auto and subagent count files; undone counts changes)',
+  UNITS,
   '',
   'changed without being asked',
   '  src/a.ts                                 auto      1 change',
 ].join('\n')
+const LEDGER_JSON = JSON.stringify({ text: TEXT, dim: [UNITS], cwd: '/repo', unaskedFiles: [{ file: '/repo/src/a.ts' }] })
 
-/** The `/minos` command as a person runs it at the terminal prompt. */
-const LIVE = { command: 'minos', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 160 } } as const
+/** A CLI stand-in: the ledger as JSON, a file's history, and no undo findings. */
+const cli = (run: Run) =>
+  run.argv[2] === 'ledger'
+    ? { exitCode: 0, stdout: LEDGER_JSON }
+    : run.argv[2] === 'file'
+      ? { exitCode: 0, stdout: 'src/a.ts: 1 operation in this session\n' }
+      : { exitCode: 0, stdout: '[]' }
 
-const ledgerRuns = (runs: { argv: readonly string[] }[]) => runs.filter((r) => r.argv[2] === 'ledger').length
+const ledgerRuns = (runs: Run[]) => runs.filter((r) => r.argv[2] === 'ledger').length
 
 test('/minos opens the pane and it shows the ledger the CLI prints, on every surface', async ($, on) => {
-  engine(on, () => ({ exitCode: 0, stdout: `${LEDGER_TEXT}\n` }))
+  engine(on, cli)
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  mock.clock(on)
+  const clock = mock.clock(on)
   await start($)
-  const opened = await $.command.run(LIVE)
-  expect(JSON.stringify(opened)).toContain('Minos pane opened.')
+  expect(JSON.stringify(await $.command.run(OPEN))).toContain('Minos pane opened.')
+  await clock.settle()
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /auto 1/ }))?.text).toBe('decided 0  auto 1  subagent 0  undone 0')
-    expect((await ui.find({ type: 'Text', text: /src\/a\.ts/ }))?.text).toContain('1 change')
+    expect((await ui.find({ type: 'Text', text: /1 change$/ }))?.text).toContain('src/a.ts')
     await ui.unmount()
   }
+})
+
+test('pressing a file in the pane shows its history', async ($, on) => {
+  const { runs } = engine(on, cli)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const clock = mock.clock(on)
+  await start($)
+  await $.command.run(OPEN)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'file:/repo/src/a.ts' })
+  expect(runs.some((r) => r.argv[2] === 'file' && r.argv[3] === '/repo/src/a.ts')).toBe(true)
+  expect((await ui.find({ type: 'Text', text: /operation in this session/ }))?.text).toBe('src/a.ts: 1 operation in this session')
+  await ui.unmount()
 })
 
 test('the pane says so when Minos could not run', async ($, on) => {
   engine(on, () => ({ exitCode: 1, stderr: 'minos: no transcript found for /repo\n' }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  mock.clock(on)
+  const clock = mock.clock(on)
   await start($)
-  await $.command.run(LIVE)
+  await $.command.run(OPEN)
+  await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: /could not run/ }))?.text).toContain('minos: no transcript found for /repo')
   await ui.unmount()
 })
 
-test('a burst of edits becomes one refresh after the session goes quiet', async ($, on) => {
-  const { runs } = engine(on, (run) => (run.argv[2] === 'undoes' ? { exitCode: 0, stdout: '[]' } : { exitCode: 0, stdout: LEDGER_TEXT }))
+test('nothing is refreshed while the pane has not been opened', async ($, on) => {
+  const { runs } = engine(on, cli)
   on('tool.call', () => ({ result: { filePath: '/repo/a.ts' } }))
   const clock = mock.clock(on)
   await start($)
-  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Write', file_path: '/repo/a.ts', content: `${i}` })
+  await $.tool.call({ tool: 'Write', file_path: '/repo/a.ts', content: 'x' })
+  await clock.advance(2000)
   expect(ledgerRuns(runs)).toBe(0)
+})
+
+test('while open, a burst of changes of every kind and a turn end become one refresh', async ($, on) => {
+  const { runs } = engine(on, cli)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('tool.call', () => ({ result: { filePath: '/repo/a.ts' } }))
+  on('turn.complete', (_, e) => e as never)
+  const clock = mock.clock(on)
+  await start($)
+  await $.command.run(OPEN)
+  await clock.settle()
+  const opened = ledgerRuns(runs)
+  await $.tool.call({ tool: 'Write', file_path: '/repo/a.ts', content: '1' })
+  await $.tool.call({ tool: 'NotebookEdit', notebook_path: '/repo/n.ipynb', new_source: 'x' } as never)
+  await $.tool.call({ tool: 'Agent', description: 'd', prompt: 'p', subagent_type: 'general-purpose' } as never)
+  expect(ledgerRuns(runs)).toBe(opened)
   await clock.advance(1000)
-  expect(ledgerRuns(runs)).toBe(1)
+  expect(ledgerRuns(runs)).toBe(opened + 1)
 })
 
 test('a refresh asked for while one runs causes exactly one more after it', async ($, on) => {
   let release: () => void = () => {}
   const held = new Promise<void>((r) => (release = r))
   // The first ledger run holds until released, so the later requests land while it runs.
-  const { runs } = engine(on, async () => {
+  const { runs } = engine(on, async (run) => {
     if (runs.length === 1) await held
-    return { exitCode: 0, stdout: LEDGER_TEXT }
+    return cli(run)
   })
   on('ui.open', () => ({ value: { isPlaced: true } }))
   const clock = mock.clock(on)
   await start($)
-  await $.command.run(LIVE)
-  await $.command.run(LIVE)
-  await $.command.run(LIVE)
+  await $.command.run(OPEN)
+  await $.command.run(OPEN)
+  await $.command.run(OPEN)
   expect(ledgerRuns(runs)).toBe(1)
   release()
   await clock.settle()

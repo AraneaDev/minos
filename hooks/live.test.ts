@@ -42,11 +42,12 @@ test('an edit that undoes an earlier change adds the note to the result and rais
   const { runs, toasts } = engine(on, () => ({ exitCode: 0, stdout: JSON.stringify([{ note: NOTE }]) }))
   on('tool.call', () => ({ result: { filePath: '/repo/src/a.ts' } }))
   await start($)
-  const ran = await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'b', new_string: 'c' })
+  const ran = await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'b', new_string: 'c', tool_use_id: 'toolu_1' })
   expect(ran.context).toContain(NOTE)
   expect(toasts.join('\n')).toContain(NOTE)
   const sent = JSON.parse(runs[0]!.init!.stdin!)
-  expect(sent).toEqual({ kind: 'edit', file: '/repo/src/a.ts', old_string: 'b', new_string: 'c', replace_all: false })
+  expect(sent).toMatchObject({ kind: 'edit', file: '/repo/src/a.ts', old_string: 'b', new_string: 'c', replace_all: false })
+  expect(typeof sent.tool_use_id).toBe('string')
   expect(runs[0]!.init!.timeoutMs).toBe(1500)
 })
 
@@ -69,4 +70,13 @@ test('nothing is added when the check finds nothing, fails, or the call itself f
   await $.tool.call({ tool: 'Edit', file_path: '/repo/b.ts', old_string: 'q', new_string: 'r' })
   expect(runs.length).toBe(before)
   expect(toasts).toEqual([])
+})
+
+test('the undo check never falls back to another session', async ($, on) => {
+  const { runs } = engine(on, () => ({ exitCode: 1, stderr: 'minos: no session matching "sess-1" for /repo.\n' }))
+  on('tool.call', () => ({ result: { filePath: '/repo/a.ts' } }))
+  await start($)
+  const ran = await $.tool.call({ tool: 'Write', file_path: '/repo/a.ts', content: 'x' })
+  expect(ran.context ?? []).toEqual([])
+  expect(runs.filter((r) => r.argv[2] === 'undoes')).toHaveLength(1)
 })
