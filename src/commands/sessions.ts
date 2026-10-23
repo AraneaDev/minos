@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 import { localStamp } from '../clock'
-import { projectFor, sessionFiles, subagentFiles } from '../paths'
+import { projectFor, subagentFiles } from '../paths'
 import { analyseSession } from '../session'
 import { describeWindow, spansWindow, type Window } from '../window'
 
@@ -39,8 +39,7 @@ import { describeWindow, spansWindow, type Window } from '../window'
 export async function runSessions(cwd: string, limit: number, window: Window): Promise<string | null> {
   const project = await projectFor(cwd)
   if (project === null) return null
-  const { dir } = project
-  const files = await sessionFiles(dir)
+  const { dir, files } = project
   if (files.length === 0) return null
   const lines: string[] = []
   if (project.cwds.length > 1) lines.push(`recorded under ${project.cwds.length} paths: ${project.cwds.join(', ')}`)

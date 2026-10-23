@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import {
   claudeHome,
   encodeProjectSlug,
@@ -257,7 +257,7 @@ test('projectFor accepts the encoded directory when a newer transcript records t
   await utimes(join(dir, 'old.jsonl'), new Date('2024-01-01'), new Date('2024-01-01'))
   await utimes(join(dir, 'new.jsonl'), new Date('2024-06-01'), new Date('2024-06-01'))
 
-  expect(await projectFor(cwd)).toEqual({ dir, cwds: ['/home/tim/site', '/root/site'] })
+  expect(await projectFor(cwd)).toEqual({ dir, cwds: ['/home/tim/site', '/root/site'], files: [join(dir, 'old.jsonl'), join(dir, 'new.jsonl')] })
 })
 
 test('projectFor finds a moved project through the fallback scan when the newest transcript records the cwd', async () => {
@@ -278,7 +278,7 @@ test('projectFor accepts the guess when no transcript records a cwd', async () =
   await mkdir(dir, { recursive: true })
   await writeFile(join(dir, 'a.jsonl'), `${JSON.stringify({ type: 'mode' })}\n`)
 
-  expect(await projectFor(cwd)).toEqual({ dir, cwds: [] })
+  expect(await projectFor(cwd)).toEqual({ dir, cwds: [], files: [join(dir, 'a.jsonl')] })
 })
 
 test('projectFor rejects the guess when every recovered cwd differs', async () => {
@@ -290,13 +290,43 @@ test('projectFor rejects the guess when every recovered cwd differs', async () =
   expect(await projectFor(cwd)).toBeNull()
 })
 
-test('recordedCwds returns each distinct cwd once, sorted, and nothing for a missing directory', async () => {
+test('recordedCwds returns each distinct cwd once, sorted, and nothing for a missing directory or file', async () => {
   const dir = join(root, 'projects', '-any')
   await mkdir(dir, { recursive: true })
   await writeFile(join(dir, 'a.jsonl'), `${JSON.stringify({ cwd: '/root/site' })}\n`)
   await writeFile(join(dir, 'b.jsonl'), `${JSON.stringify({ cwd: '/home/tim/site' })}\n`)
   await writeFile(join(dir, 'c.jsonl'), `${JSON.stringify({ cwd: '/root/site' })}\n`)
 
-  expect(await recordedCwds(dir)).toEqual(['/home/tim/site', '/root/site'])
-  expect(await recordedCwds(join(root, 'projects', '-missing'))).toEqual([])
+  expect(await recordedCwds(await sessionFiles(dir))).toEqual(['/home/tim/site', '/root/site'])
+  expect(await recordedCwds(await sessionFiles(join(root, 'projects', '-missing')))).toEqual([])
+  expect(await recordedCwds([join(dir, 'gone.jsonl')])).toEqual([])
+})
+
+test('the fallback scan stops at the first directory that matches: no later directory is read', async () => {
+  const cwd = '/home/tim/scan-stop'
+  const first = join(root, 'projects', '-a-first')
+  const later = join(root, 'projects', '-b-later')
+  await mkdir(first, { recursive: true })
+  await mkdir(later, { recursive: true })
+  await writeFile(join(first, 'one.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`)
+  await writeFile(join(later, 'two.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`)
+  const opened = spyOn(Bun, 'file')
+  try {
+    expect((await projectFor(cwd))?.dir).toBe(first)
+    const paths = opened.mock.calls.map(([p]) => String(p))
+    expect(paths.some((p) => p.startsWith(first))).toBe(true)
+    expect(paths.some((p) => p.startsWith(later))).toBe(false)
+  } finally {
+    opened.mockRestore()
+  }
+})
+
+test('the fallback scan accepts a directory whose newest transcript matches though an older one cannot be read', async () => {
+  const cwd = '/home/tim/scan-unreadable'
+  const dir = join(root, 'projects', '-moved')
+  await mkdir(join(dir, 'old.jsonl'), { recursive: true })
+  await writeFile(join(dir, 'new.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`)
+  await utimes(join(dir, 'old.jsonl'), new Date('2024-01-01'), new Date('2024-01-01'))
+  await utimes(join(dir, 'new.jsonl'), new Date('2024-06-01'), new Date('2024-06-01'))
+  expect(await projectFor(cwd)).toEqual({ dir, cwds: [cwd], files: [join(dir, 'old.jsonl'), join(dir, 'new.jsonl')] })
 })

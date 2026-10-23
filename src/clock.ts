@@ -43,18 +43,19 @@ function localDayIndex(at: Date): number {
 
 const two = (n: number): string => String(n).padStart(2, '0')
 
+/** The local calendar date of a parsed instant, as `YYYY-MM-DD`. */
+const ymd = (at: Date): string => `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}`
+
 /** The local calendar date of an instant, as `YYYY-MM-DD`. */
 export function localDate(iso: string): string {
   const at = instant(iso)
-  if (at === null) return UNKNOWN_DATE
-  return `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}`
+  return at === null ? UNKNOWN_DATE : ymd(at)
 }
 
 /** A local `YYYY-MM-DD HH:MM`, or the unknown-date marker when the timestamp does not parse. */
 export function localStamp(iso: string): string {
   const at = instant(iso)
-  if (at === null) return UNKNOWN_DATE
-  return `${localDate(iso)} ${two(at.getHours())}:${two(at.getMinutes())}`
+  return at === null ? UNKNOWN_DATE : `${ymd(at)} ${two(at.getHours())}:${two(at.getMinutes())}`
 }
 
 /**

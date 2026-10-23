@@ -121,23 +121,24 @@ async function recordedCwd(path: string): Promise<string | null> {
   return null
 }
 
-/** A project directory and every cwd its transcripts record, sorted. */
+/** A project directory, every cwd its transcripts record (sorted), and its transcripts as `sessionFiles` lists them. */
 export interface ProjectMatch {
   dir: string
   cwds: string[]
+  /** Oldest to newest by modification time, so a caller need not list the directory again. */
+  files: string[]
 }
 
 /**
- * The distinct cwds recorded across every transcript in a project directory,
- * sorted. Transcripts are read in name order, which does not matter since the result is sorted, each with the same bounded head
- * read as `recordedCwd`, so a directory is never read whole. A repository
- * that was moved or renamed records more than one path here, and a missing
- * directory or an unreadable transcript contributes nothing rather than
- * throwing.
+ * The distinct cwds recorded across the given transcripts, sorted. Each
+ * transcript is read only as far as `recordedCwd` reads it, a bounded head,
+ * so no file is ever read whole. A repository that was moved or renamed
+ * records more than one path here. An unreadable transcript contributes
+ * nothing rather than throwing.
  */
-export async function recordedCwds(projectDir: string): Promise<string[]> {
+export async function recordedCwds(files: string[]): Promise<string[]> {
   const found = new Set<string>()
-  for (const file of await sessionFiles(projectDir)) {
+  for (const file of files) {
     const recorded = await recordedCwd(file)
     if (recorded !== null) found.add(recorded)
   }
@@ -160,23 +161,26 @@ export async function recordedCwds(projectDir: string): Promise<string[]> {
  * at all, since refusing it would make Minos report nothing on a legitimate,
  * if short or unusual, transcript. On the fallback scan there is no such
  * prior evidence, so a directory is accepted only when a transcript records
- * exactly this cwd; the first such directory wins, and within it the heads
- * are read only until the first match.
+ * exactly this cwd. Directories are scanned in name order, newest transcript
+ * first, and the first match ends the scan: no later directory is read. The
+ * matching directory's heads are then all read once more for its cwds.
  */
 export async function projectFor(cwd: string): Promise<ProjectMatch | null> {
   const root = join(claudeHome(), 'projects')
 
   const guess = join(root, encodeProjectSlug(cwd))
-  if ((await sessionFiles(guess)).length > 0) {
-    const cwds = await recordedCwds(guess)
-    if (cwds.length === 0 || cwds.includes(cwd)) return { dir: guess, cwds }
+  const guessed = await sessionFiles(guess)
+  if (guessed.length > 0) {
+    const cwds = await recordedCwds(guessed)
+    if (cwds.length === 0 || cwds.includes(cwd)) return { dir: guess, cwds, files: guessed }
   }
 
   const names = await readdir(root).catch(() => [] as string[])
-  for (const name of names) {
+  for (const name of names.sort()) {
     const candidate = join(root, name)
-    for (const file of (await sessionFiles(candidate)).reverse()) {
-      if ((await recordedCwd(file)) === cwd) return { dir: candidate, cwds: await recordedCwds(candidate) }
+    const files = await sessionFiles(candidate)
+    for (const file of [...files].reverse()) {
+      if ((await recordedCwd(file)) === cwd) return { dir: candidate, cwds: await recordedCwds(files), files }
     }
   }
   return null
