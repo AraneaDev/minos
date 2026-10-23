@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.9](https://github.com/AraneaDev/minos/compare/v0.0.8...v0.0.9) (2026-10-23)
+
+
+### Features
+
+* **mod:** show the session's ledger live, in a pane, a tool and an undo note ([#17](https://github.com/AraneaDev/minos/issues/17)) ([6cf47c7](https://github.com/AraneaDev/minos/commit/6cf47c75f224a0cac1afc79ec3fb105f370c837d))
+
 ## [0.0.8](https://github.com/AraneaDev/minos/compare/v0.0.7...v0.0.8) (2026-10-23)
 
 
