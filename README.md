@@ -143,9 +143,13 @@ what you want to read is that what you asked for in prompt 4 did not survive pro
 that cannot be traced back to a prompt is marked `(unattributed)` rather than guessed at, and
 subagent operations often are.
 
-Detection works on the text of the changes themselves, so read it as a strong indication rather
-than a proof. A file whose final state cannot be reconstructed can produce a finding that does not
-hold, and text that turns up again elsewhere in a file can hide one that does.
+Detection follows the lines each change added through every later change to the same file. A
+change did not survive when more than half of the lines it added are gone, which catches an agent
+taking a change back with a small edit, and does not count a file rewritten with most of its lines
+kept. Lines of only braces and punctuation are not counted. It works on the text of the changes
+themselves, so read it as a strong indication rather than a proof: a file whose final state cannot
+be reconstructed can produce a finding that does not hold, and text that turns up again elsewhere
+in a file can hide one that does.
 
 ![minos file src/report.ts: six changes that did not survive, above the 23 operations that touched
 the file, every one of them inside a subagent](docs/images/file.svg)
