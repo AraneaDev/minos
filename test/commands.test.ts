@@ -8,13 +8,12 @@ import { runFile } from '../src/commands/file'
 import { runSessions } from '../src/commands/sessions'
 import { localStamp } from '../src/clock'
 import type { Window } from '../src/window'
-
-const OPEN: Window = { since: null, until: null }
 import { runExport } from '../src/commands/export'
 import { main } from '../src/cli'
 import { encodeProjectSlug } from '../src/paths'
 import { FIXTURE_DIR } from '../scripts/make-fixtures'
 
+const OPEN: Window = { since: null, until: null }
 const paths = { transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] }
 
 test('report prints the sectioned report', async () => {
@@ -312,22 +311,47 @@ describe('commands that resolve a session against the transcript store', () => {
 
     const limited = await runSessions(cwd, 1, OPEN)
     expect((limited ?? '').split('\n').slice(2)).toEqual([lines[1]!])
+  })
 
-    // The span reads from the first record to the last, on the reader's clock,
-    // and the header says what the three count columns count.
-    expect(lines[1]).toContain(`${localStamp('2026-09-02T10:00:00Z')}  ${localStamp('2026-09-02T10:02:00Z')}`)
-    const header = (full ?? '').split('\n').slice(0, 2)
-    expect(header[0]).toBe('session   first             last              decided  auto  subagent  undone')
-    expect(header[1]).toBe('          (decided, auto and subagent count files; undone counts changes)')
+  /** Two sessions, one on 09-01 and one on 09-02, plus a third on 09-03. */
+  async function threeSessions(cwd: string): Promise<void> {
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    for (const [id, day] of [['sess-001', '01'], ['sess-002', '02'], ['sess-003', '03']] as const) {
+      const lines = [
+        { type: 'user', uuid: `${id}-u`, parentUuid: null, promptId: `${id}-p`, permissionMode: 'default', timestamp: `2026-09-${day}T10:00:00Z`, sessionId: id, cwd, message: { content: 'hi' } },
+        { type: 'assistant', uuid: `${id}-a`, parentUuid: `${id}-u`, timestamp: `2026-09-${day}T10:02:00Z`, isSidechain: false, message: { content: [{ type: 'tool_use', id: `${id}-t`, name: 'Write', input: { file_path: '/repo/a.ts', content: 'x\n' } }] } },
+      ]
+      await writeFile(join(projectDir, `${id}.jsonl`), lines.map((r) => JSON.stringify(r)).join('\n'))
+    }
+  }
+  const ids = (text: string | null) => (text ?? '').split('\n').filter((l) => l.startsWith('sess-')).map((l) => l.slice(0, 8))
 
-    // A window leaves out sessions that ended before it and says what it was.
-    const windowed = (await runSessions(cwd, 10, { since: '2026-09-02', until: null })) ?? ''
-    const kept = windowed.split('\n')
-    expect(kept.filter((l) => l.startsWith('sess-')).map((l) => l.slice(0, 8))).toEqual(['sess-002'])
-    expect(kept.at(-1)).toBe('window: 2026-09-02 to today')
-    const before = (await runSessions(cwd, 10, { since: null, until: '2026-09-01' })) ?? ''
-    expect(before.split('\n').filter((l) => l.startsWith('sess-')).map((l) => l.slice(0, 8))).toEqual(['sess-001'])
-    expect(before.split('\n').at(-1)).toBe('window: start of history to 2026-09-01')
+  test("sessions prints each session's first and last time and states its units", async () => {
+    const cwd = '/root/fake-project-sessions-units'
+    await threeSessions(cwd)
+    const lines = ((await runSessions(cwd, 10, OPEN)) ?? '').split('\n')
+    expect(lines[0]).toBe('session   first             last              decided  auto  subagent  undone')
+    expect(lines[1]).toBe('          (decided, auto and subagent count files; undone counts changes)')
+    expect(lines[3]).toContain(`${localStamp('2026-09-02T10:00:00Z')}  ${localStamp('2026-09-02T10:02:00Z')}`)
+  })
+
+  test('sessions with --since leaves out sessions that ended before it and prints the window', async () => {
+    const cwd = '/root/fake-project-sessions-since'
+    await threeSessions(cwd)
+    const since = ((await runSessions(cwd, 10, { since: '2026-09-02', until: null })) ?? '')
+    expect(ids(since)).toEqual(['sess-002', 'sess-003'])
+    expect(since.split('\n').at(-1)).toBe('window: 2026-09-02 to today')
+    const until = (await runSessions(cwd, 10, { since: null, until: '2026-09-01' })) ?? ''
+    expect(ids(until)).toEqual(['sess-001'])
+    expect(until.split('\n').at(-1)).toBe('window: start of history to 2026-09-01')
+  })
+
+  test('sessions applies the window before the limit, so older in-window sessions are still listed', async () => {
+    const cwd = '/root/fake-project-sessions-window-limit'
+    await threeSessions(cwd)
+    expect(ids(await runSessions(cwd, 1, { since: null, until: '2026-09-01' }))).toEqual(['sess-001'])
+    expect(ids(await runSessions(cwd, 2, { since: '2026-09-02', until: null }))).toEqual(['sess-002', 'sess-003'])
   })
 
   test('sessions lists every session of a project recorded under two paths, and says so once', async () => {
