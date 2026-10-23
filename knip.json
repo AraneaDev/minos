@@ -9,5 +9,9 @@
     "src/**/*.ts",
     "scripts/**/*.ts",
     "test/**/*.ts"
+  ],
+  "ignore": [
+    "hooks/**",
+    "types/**"
   ]
 }

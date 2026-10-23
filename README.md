@@ -37,8 +37,9 @@ overwritten at 19:41 by a later turn working on something else is invisible in t
 because the final diff only shows the last state. Minos has both, and names the prompt behind each
 wherever the transcript lets it.
 
-No hook runs on any turn and nothing is captured while you work. Minos can answer for sessions
-that happened before you installed it, for as long as Claude Code still keeps their transcripts.
+Nothing is captured while you work: the live view's hooks read only the transcript Claude Code
+already writes. Because that transcript is all Minos reads, it can also answer for sessions that
+happened before you installed it, for as long as Claude Code still keeps their transcripts.
 
 ![The minos report for the session that built Minos: 57 files changed, none of them decided, 54 of
 them applied inside a subagent, and 28 changes that did not survive the
@@ -134,9 +135,12 @@ minos sessions --all
                     every project under ~/.claude/projects, with totals
 minos export        the ledger as data, JSON
 minos export --all  every project's counts as data, JSON
+minos ledger        the session's ledger in short, as text or (--json) data
+minos undoes        which earlier changes one Edit or Write ends, read as JSON on stdin
 ```
 
-`report`, `file`, `undone` and `export` each take `--session <id>` and `--project <path>`.
+`report`, `file`, `undone`, `export`, `ledger` and `undoes` each take `--session <id>` and
+`--project <path>`.
 `sessions` takes `--project` and `--limit <n>`. `sessions` and `export` also take `--since
 YYYY-MM-DD` and `--until YYYY-MM-DD`, which bound the listing to local calendar days, both
 inclusive. Any other command rejects them. `--all` takes the same two flags.
@@ -172,7 +176,26 @@ classifier refusal or missing verdict, or a user rejection. A command that ran a
 (`Exit code N`) stays in, since it may have written before it failed. It is a loose heuristic, and
 those commands are never counted in the classes.
 
-In Claude Code, `/minos` prints the report for the session you are in.
+In Claude Code, `/minos:report` prints the report for the session you are in.
+
+## Live in a session
+
+The plugin also shows the ledger while the session runs, for you and for the agent:
+
+- `/minos` opens a pane beside the chat with the session's decided, auto, subagent and
+  undone counts and the files changed without you being asked. While it is open it refreshes
+  after each change and at the end of each turn, and pressing a file shows that file's history.
+- The agent gets a `minos_ledger` tool with the same text. Its description asks the agent to
+  call it before saying the work is done, and before writing a commit message or a PR
+  description, so a summary cannot leave out what a subagent changed.
+- When an Edit or Write undoes a change the session made earlier, the agent reads one line about
+  it with that tool's result, and you get the same line as a toast and in the pane. Nothing is
+  ever blocked. The check covers Edit and Write, not NotebookEdit, and it gives up after 1.5
+  seconds, so on a transcript of hundreds of megabytes the line can be missing.
+
+All three ask the CLI and show what it prints, so the pane and the tool use the same counts and
+wording as `minos report`. The pane can trail the transcript by a second or so after a change. They need Claude Code 2.1.309 or newer, which runs a plugin's hooks module. On an
+older version the CLI and `/minos:report` work as before.
 
 ## What it does not do
 
@@ -185,7 +208,7 @@ In Claude Code, `/minos` prints the report for the session you are in.
 
 ## Install
 
-In Claude Code, as a plugin, which is where `/minos` comes from:
+In Claude Code, as a plugin, which is where `/minos` and `/minos:report` come from:
 
 <!-- aranea-install:start -->
 Install from the Aranea marketplace:
@@ -217,6 +240,7 @@ Bun 1.1.0 or newer, and a Claude Code transcript store at `~/.claude/projects`, 
 bun install
 bun run check      # lint, lint:docs, typecheck, knip, then the full suite with coverage
 bun run fp         # the attribution harness: plants a known answer, asserts Minos finds it
+bun run test:mod   # the live view's own tests, under claude plugin test
 ```
 
 ## License

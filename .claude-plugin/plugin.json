@@ -18,5 +18,6 @@
     "permissions",
     "subagents",
     "local-first"
-  ]
+  ],
+  "types": "./types/index.d.ts"
 }

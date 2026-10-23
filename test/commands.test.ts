@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { resolveSession, runReport } from '../src/commands/report'
+import { runLedger } from '../src/commands/ledger'
 import { runUndone } from '../src/commands/undone'
 import { runFile } from '../src/commands/file'
 import { chmod } from 'node:fs/promises'
@@ -29,6 +30,20 @@ test('undone prints only the changes that did not survive', async () => {
   const text = await runUndone(paths)
   expect(text).toContain('reverted')
   expect(text).not.toContain('BY PROMPT')
+})
+
+test('ledger text and json agree on the counts, and json parses', async () => {
+  const view = JSON.parse(await runLedger(paths, true))
+  const c = view.counts
+  const text = await runLedger(paths, false)
+  expect(text).toContain(`decided ${c.decided}  auto ${c.auto}  subagent ${c.subagent}  undone ${c.undone}`)
+  expect(c.decided).toBeGreaterThan(0)
+  expect(c.auto).toBeGreaterThan(0)
+  expect(text).toContain(view.decidedNote)
+  for (const f of view.unaskedFiles) expect(text).toContain(f.file.replace(`${view.cwd}/`, ''))
+  // The JSON carries the very text the command prints, and the lines a display dims.
+  expect(view.text).toBe(text)
+  expect(view.dim).toContain('(decided, auto and subagent count files; undone counts changes)')
 })
 
 test('export emits parseable json carrying the totals', async () => {
@@ -343,6 +358,16 @@ describe('commands that resolve a session against the transcript store', () => {
     expect(lines[0]).toBe('session   first             last              decided  auto  subagent  undone')
     expect(lines[1]).toBe('          (decided, auto and subagent count files; undone counts changes)')
     expect(lines[3]).toContain(`${localStamp('2026-09-02T10:00:00Z')}  ${localStamp('2026-09-02T10:02:00Z')}`)
+  })
+
+  test('sessions --json gives the same rows as data, newest last', async () => {
+    const cwd = '/root/fake-project-sessions-json'
+    await threeSessions(cwd)
+    const data = JSON.parse((await runSessions(cwd, 10, OPEN, true)) ?? 'null')
+    expect(data.sessions.map((r: { short: string }) => r.short)).toEqual(['sess-001', 'sess-002', 'sess-003'])
+    expect(data.sessions[1].first).toBe(localStamp('2026-09-02T10:00:00Z'))
+    expect(Object.keys(data.sessions[0].counts)).toEqual(['decided', 'auto', 'subagent', 'undone'])
+    expect(data.window).toEqual(OPEN)
   })
 
   test('sessions with --since leaves out sessions that ended before it and prints the window', async () => {

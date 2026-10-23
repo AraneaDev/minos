@@ -4,34 +4,36 @@ import { runAll } from './commands/all'
 import { resolveSession, runReport } from './commands/report'
 import { runExport, runExportAll } from './commands/export'
 import { runFile } from './commands/file'
+import { runLedger } from './commands/ledger'
 import { runSessions } from './commands/sessions'
+import { runUndoes, parseProposed } from './commands/undoes'
 import { runUndone } from './commands/undone'
 import { claudeHome } from './paths'
 import type { Window } from './window'
 
-const COMMANDS = ['report', 'file', 'undone', 'sessions', 'export'] as const
+const COMMANDS = ['report', 'file', 'undone', 'sessions', 'export', 'ledger', 'undoes'] as const
 
 const FLAG_NAMES = ['project', 'session', 'limit', 'since', 'until'] as const
 
 /** Flags that take no value. Kept apart from FLAG_NAMES, whose entries consume the argument after them. */
-const BARE_FLAGS = ['all'] as const
+const BARE_FLAGS = ['all', 'json'] as const
 
 /**
- * Usage text for `--help`/`-h`, naming the five real commands and only the
- * flags each one actually accepts. `--json` is named in the spec's
- * illustrative command surface but implemented nowhere in this CLI, so it is
- * deliberately absent here rather than promising a flag that would silently
- * do nothing.
+ * Usage text for `--help`/`-h`, naming the real commands and only the flags
+ * each one actually accepts. `--json` is listed for `ledger` and `sessions`,
+ * the commands that take it.
  */
 const USAGE = `minos: reports what a Claude Code session changed, and which of it was ever put to you as a decision.
 
   minos report [--session <id>] [--project <path>]   the default; latest session for the cwd
   minos file <path> [--session <id>] [--project <path>]   one file's operation history in the session
   minos undone [--session <id>] [--project <path>]   the undone changes on their own
-  minos sessions [--limit <n>] [--project <path>]     sessions with headline counts, to pick one
+  minos sessions [--limit <n>] [--project <path>] [--json]     sessions with headline counts, to pick one
   minos sessions --all                                every project, with totals
   minos export [--session <id>] [--project <path>]    the ledger as data
   minos export --all                                  every project's counts as data
+  minos ledger [--session <id>] [--project <path>] [--json]   what changed without being asked, as text or data
+  minos undoes [--session <id>] [--project <path>]   reads one Edit or Write as JSON on stdin, prints the earlier changes it ends
 
   --since <YYYY-MM-DD> and --until <YYYY-MM-DD> bound sessions, export and --all
   to local calendar days, both inclusive.`
@@ -136,7 +138,7 @@ function show(text: string): void {
 }
 
 /** Entry point. Returns the exit code rather than calling exit, so it is testable. */
-export async function main(argv: string[]): Promise<number> {
+export async function main(argv: string[], stdin?: () => Promise<string>): Promise<number> {
   // Checked before any command dispatch: a leading flag is not a recognised
   // command name, so without this it falls through to the default `report`
   // command and either prints a real report or "no transcript found",
@@ -153,6 +155,15 @@ export async function main(argv: string[]): Promise<number> {
 
   if (first !== undefined && !first.startsWith('-') && !named) {
     console.error(`minos: no command "${first}". Try: ${COMMANDS.join(', ')}`)
+    return 2
+  }
+
+  if (args.includes('--json') && command !== 'ledger' && command !== 'sessions') {
+    console.error('minos: --json only applies to ledger and sessions')
+    return 2
+  }
+  if (args.includes('--json') && args.includes('--all')) {
+    console.error('minos: --json does not combine with --all; use minos export --all for the data')
     return 2
   }
 
@@ -220,13 +231,24 @@ export async function main(argv: string[]): Promise<number> {
       console.error(`minos: --limit must be a positive integer, got "${typed}"`)
       return 2
     }
-    const listing = await runSessions(cwd, limit, window)
+    const asJson = args.includes('--json')
+    const listing = await runSessions(cwd, limit, window, asJson)
     if (listing === null) {
       console.error(`minos: no transcript found for ${cwd}`)
       return 1
     }
-    show(listing)
+    if (asJson) console.log(listing)
+    else show(listing)
     return 0
+  }
+
+  let undoesInput = ''
+  if (command === 'undoes') {
+    undoesInput = stdin === undefined ? await Bun.stdin.text() : await stdin()
+    if (parseProposed(undoesInput) === null) {
+      console.error('minos: undoes reads one change as JSON on stdin')
+      return 2
+    }
   }
 
   const target = positional(args)[0]
@@ -246,9 +268,20 @@ export async function main(argv: string[]): Promise<number> {
   }
   const paths = lookup.paths
 
-  if (command === 'undone') show(await runUndone(paths))
+  if (command === 'undoes') {
+    const result = await runUndoes(paths, undoesInput)
+    console.log(result.out)
+    return result.code
+  } else if (command === 'undone') show(await runUndone(paths))
   // Not `show`: export is JSON for a program to parse, so it never gets escapes.
   else if (command === 'export') console.log(await runExport(paths, window))
+  // Same for the JSON ledger; the text form is a report-shaped view and is coloured like one.
+  else if (command === 'ledger') {
+    const json = args.includes('--json')
+    const out = await runLedger(paths, json)
+    if (json) console.log(out)
+    else show(out)
+  }
   else if (command === 'file') show(await runFile(paths, target as string))
   else show(await runReport(paths))
 

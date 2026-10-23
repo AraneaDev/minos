@@ -20,7 +20,8 @@
     "knip": "knip",
     "fp": "bun run scripts/fp-harness.ts",
     "check": "bun run lint && bun run lint:docs && bun run typecheck && bun run knip && bun run test:coverage",
-    "prepare": "git config core.hooksPath .githooks || true"
+    "prepare": "git config core.hooksPath .githooks || true",
+    "test:mod": "scripts/test-mod.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -48,8 +48,8 @@ for (const helpFlag of ['--help', '-h']) {
         expect(usage).toContain(`minos ${command}`)
       }
       for (const name of ['--all', '--since', '--until']) expect(usage).toContain(name)
-      // Real flags only: --json does not exist anywhere in this CLI.
-      expect(usage).not.toContain('--json')
+      expect(usage).toContain('minos ledger')
+      expect(usage).toContain('--json')
       expect(usage).not.toContain('MINOS')
     } finally {
       logSpy.mockRestore()
@@ -365,4 +365,65 @@ test('export with a window dispatches and carries the window', async () => {
   const { code, out } = await capture(['export', '--project', '/fake/cli-export-window', '--since', '2026-09-07'])
   expect(code).toBe(0)
   expect(JSON.parse(out).window).toEqual({ since: '2026-09-07', until: null })
+})
+
+test('--json on any command but ledger and sessions exits 2 and says so', async () => {
+  const errSpy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    expect(await main(['report', '--json'])).toBe(2)
+    expect(errSpy).toHaveBeenCalledWith('minos: --json only applies to ledger and sessions')
+  } finally {
+    errSpy.mockRestore()
+  }
+})
+
+test('minos ledger --json prints parseable JSON for the latest session', async () => {
+  const cwd = '/root/fake-ledger-cli'
+  const projectDir = join(configDir, 'projects', encodeProjectSlug(cwd))
+  await mkdir(projectDir, { recursive: true })
+  await writeFile(
+    join(projectDir, 'sess-1.jsonl'),
+    `${JSON.stringify({ type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'default', timestamp: '2026-10-23T18:51:00Z', cwd, sessionId: 'sess-1', message: { content: 'hi' } })}\n`,
+  )
+  const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['ledger', '--json', '--project', cwd])).toBe(0)
+    const view = JSON.parse((logSpy.mock.calls[0] as [string])[0])
+    expect(view.sessionId).toBe('sess-1')
+    expect(view.counts).toEqual({ decided: 0, auto: 0, subagent: 0, undone: 0 })
+  } finally {
+    logSpy.mockRestore()
+  }
+})
+
+test('minos undoes exits 2 on malformed stdin and prints a JSON array for a valid change', async () => {
+  const cwd = '/root/fake-undoes-cli'
+  const projectDir = join(configDir, 'projects', encodeProjectSlug(cwd))
+  await mkdir(projectDir, { recursive: true })
+  await writeFile(
+    join(projectDir, 'sess-1.jsonl'),
+    `${JSON.stringify({ type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'default', timestamp: '2026-10-23T18:51:00Z', cwd, sessionId: 'sess-1', message: { content: 'hi' } })}\n`,
+  )
+  const errSpy = spyOn(console, 'error').mockImplementation(() => {})
+  const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['undoes', '--project', cwd], async () => '{nope')).toBe(2)
+    expect(errSpy).toHaveBeenCalledWith('minos: undoes reads one change as JSON on stdin')
+    const change = JSON.stringify({ kind: 'edit', file: '/x', old_string: 'a', new_string: 'b' })
+    expect(await main(['undoes', '--project', cwd], async () => change)).toBe(0)
+    expect(JSON.parse((logSpy.mock.calls[0] as [string])[0])).toEqual([])
+  } finally {
+    errSpy.mockRestore()
+    logSpy.mockRestore()
+  }
+})
+
+test('--json with --all exits 2 and points at export --all', async () => {
+  const errSpy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    expect(await main(['sessions', '--all', '--json'])).toBe(2)
+    expect(errSpy).toHaveBeenCalledWith('minos: --json does not combine with --all; use minos export --all for the data')
+  } finally {
+    errSpy.mockRestore()
+  }
 })
