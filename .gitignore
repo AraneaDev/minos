@@ -16,3 +16,6 @@ CLAUDE.md
 # work is on, and stay out of the history a reader of this repository sees.
 /docs/spec.md
 /docs/plan.md
+
+# Written by Claude Code when it loads the mod from this folder.
+/.claude-plugin/types/

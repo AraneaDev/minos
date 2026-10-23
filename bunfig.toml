@@ -1,4 +1,7 @@
 [test]
+# The mod's own tests (hooks/*.test.ts) import claude-code/testing and run under
+# `claude plugin test` (bun run test:mod), never under bun test.
+root = "test"
 preload = ["./test/setup.ts"]
 coverageSkipTestFiles = true
 coverageReporter = ["text"]
