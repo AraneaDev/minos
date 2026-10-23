@@ -236,3 +236,11 @@ test('lists the prompts that changed something, most recent first, with their fi
     { ref: 'prompt 1', text: 'fix the login', summary: '1 file · 1 change · 1 undone', files: ['a.ts'] },
   ])
 })
+
+test('an operation a transcript holds twice counts once in the headline, the file list and the prompt list', () => {
+  const p1 = { id: 'p1', index: 1, uuid: 'x', text: 'go', at: '2026-10-23T18:50:00Z', permissionMode: 'acceptEdits' }
+  const twice = op('t1', { promptId: 'p1' })
+  const view = buildLedgerView(report([twice, { ...twice }], { prompts: [p1], byPrompt: [{ prompt: p1, files: 1, added: 0, removed: 0, undone: 0 }] }))
+  expect(view.unaskedFiles.map((f) => f.changes)).toEqual([1])
+  expect(view.prompts.map((p) => p.changes)).toEqual([1])
+})

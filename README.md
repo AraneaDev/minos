@@ -193,8 +193,9 @@ asking for the full report. It prints a units line and a header first, and every
 Each session shows its first and last local time. Under the rows come a total and the auto changes
 per permission mode. The total counts each change once, so a change that a resumed or forked
 session copied from its parent counts in both rows but once in the total, and a line says how many
-there were. That total is the project's row in `sessions --all`. When `--limit` leaves older
-transcripts unread, a line says how many, since the total does not cover them. If the
+there were. When the listing reads every transcript of the project, that total is the project's
+row in `sessions --all`. When `--limit` leaves older transcripts unread, the total does not cover
+them, so the two can differ, and a line says how many were left unread. If the
 project moved on disk, the first line reads `recorded under N paths:` followed by the paths, and
 the sessions under all of them are listed together. A project is found when any of its transcripts
 records the directory, so a moved repository is not reported as having no transcript.

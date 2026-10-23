@@ -62,8 +62,12 @@ const when = (iso: string): number => Date.parse(iso) || 0
  * latest such operation.
  */
 export function buildLedgerView(report: SessionReport): LedgerView {
+  // Once per tool_use id, as the headline counts them, so a record a
+  // transcript holds twice cannot make a file or a prompt count it twice.
+  const ids = new Set<string>()
+  const operations = report.operations.filter((o) => !ids.has(o.toolUseId) && ids.add(o.toolUseId))
   const byFile = new Map<string, LedgerFile>()
-  for (const o of report.operations) {
+  for (const o of operations) {
     if (o.attestation === 'decided') continue
     const seen = byFile.get(o.file)
     const newer = seen === undefined || when(o.at) >= when(seen.lastAt)
@@ -102,7 +106,7 @@ export function buildLedgerView(report: SessionReport): LedgerView {
     decidedNote: DECIDED_NOTE,
     prompts: report.byPrompt
       .map((p) => {
-        const ops = report.operations.filter((o) => o.promptId === p.prompt.id)
+        const ops = operations.filter((o) => o.promptId === p.prompt.id)
         return {
           index: p.prompt.index,
           text: p.prompt.text.split('\n').find((l) => l.trim() !== '') ?? '',
