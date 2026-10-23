@@ -20,15 +20,15 @@ const BARE_FLAGS = ['all', 'json'] as const
 
 /**
  * Usage text for `--help`/`-h`, naming the real commands and only the flags
- * each one actually accepts. `--json` is listed for `ledger` alone, the one
- * command that takes it.
+ * each one actually accepts. `--json` is listed for `ledger` and `sessions`,
+ * the commands that take it.
  */
 const USAGE = `minos: reports what a Claude Code session changed, and which of it was ever put to you as a decision.
 
   minos report [--session <id>] [--project <path>]   the default; latest session for the cwd
   minos file <path> [--session <id>] [--project <path>]   one file's operation history in the session
   minos undone [--session <id>] [--project <path>]   the undone changes on their own
-  minos sessions [--limit <n>] [--project <path>]     sessions with headline counts, to pick one
+  minos sessions [--limit <n>] [--project <path>] [--json]     sessions with headline counts, to pick one
   minos sessions --all                                every project, with totals
   minos export [--session <id>] [--project <path>]    the ledger as data
   minos export --all                                  every project's counts as data
@@ -158,8 +158,8 @@ export async function main(argv: string[], stdin?: () => Promise<string>): Promi
     return 2
   }
 
-  if (args.includes('--json') && command !== 'ledger') {
-    console.error('minos: --json only applies to ledger')
+  if (args.includes('--json') && command !== 'ledger' && command !== 'sessions') {
+    console.error('minos: --json only applies to ledger and sessions')
     return 2
   }
 
@@ -227,12 +227,14 @@ export async function main(argv: string[], stdin?: () => Promise<string>): Promi
       console.error(`minos: --limit must be a positive integer, got "${typed}"`)
       return 2
     }
-    const listing = await runSessions(cwd, limit, window)
+    const asJson = args.includes('--json')
+    const listing = await runSessions(cwd, limit, window, asJson)
     if (listing === null) {
       console.error(`minos: no transcript found for ${cwd}`)
       return 1
     }
-    show(listing)
+    if (asJson) console.log(listing)
+    else show(listing)
     return 0
   }
 

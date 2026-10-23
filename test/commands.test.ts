@@ -360,6 +360,16 @@ describe('commands that resolve a session against the transcript store', () => {
     expect(lines[3]).toContain(`${localStamp('2026-09-02T10:00:00Z')}  ${localStamp('2026-09-02T10:02:00Z')}`)
   })
 
+  test('sessions --json gives the same rows as data, newest last', async () => {
+    const cwd = '/root/fake-project-sessions-json'
+    await threeSessions(cwd)
+    const data = JSON.parse((await runSessions(cwd, 10, OPEN, true)) ?? 'null')
+    expect(data.sessions.map((r: { short: string }) => r.short)).toEqual(['sess-001', 'sess-002', 'sess-003'])
+    expect(data.sessions[1].first).toBe(localStamp('2026-09-02T10:00:00Z'))
+    expect(Object.keys(data.sessions[0].counts)).toEqual(['decided', 'auto', 'subagent', 'undone'])
+    expect(data.window).toEqual(OPEN)
+  })
+
   test('sessions with --since leaves out sessions that ended before it and prints the window', async () => {
     const cwd = '/root/fake-project-sessions-since'
     await threeSessions(cwd)
