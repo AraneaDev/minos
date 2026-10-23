@@ -172,5 +172,6 @@ test('shell writes are counted apart from the classes, once by tool_use id, insi
     { since: '2026-09-22', until: null },
   )
   expect(a.total.possiblyUnseenWrites).toEqual({ decided: 0, auto: 1, subagent: 1 })
+  expect(a.total.possiblyUnseenWritesNote).toContain('loose heuristic')
   expect(a.total.changes).toEqual({ decided: 0, auto: 0, subagent: 0, undone: 0 })
 })

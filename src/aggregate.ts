@@ -20,6 +20,10 @@ export interface ClassCounts {
   undone: number
 }
 
+/** What the export says about `possiblyUnseenWrites`, beside the numbers. */
+const POSSIBLY_UNSEEN_WRITES_NOTE =
+  'shell commands matching a write pattern: a loose heuristic, not counted in changes; it misses some writes, and many matches write outside the repository'
+
 /** One project's counts, or the deduplicated total over all of them. */
 export interface ProjectAggregate {
   dir: string
@@ -31,6 +35,8 @@ export interface ProjectAggregate {
   changes: ClassCounts
   /** Bash calls that look like file writes, deduplicated by tool_use id: a heuristic, never part of `changes`. */
   possiblyUnseenWrites: Omit<ClassCounts, 'undone'>
+  /** The caveat for `possiblyUnseenWrites`, repeated so the JSON carries it. */
+  possiblyUnseenWritesNote: string
   /** Auto operations per recorded permission mode; a null mode counts as 'unknown'. */
   autoModes: Record<string, number>
   /** The earliest startedAt among its counted sessions, as written. */
@@ -148,6 +154,7 @@ class Tally {
       sessions: this.sessions,
       changes: this.changes,
       possiblyUnseenWrites: this.shellWrites,
+      possiblyUnseenWritesNote: POSSIBLY_UNSEEN_WRITES_NOTE,
       autoModes: this.autoModes,
       firstAt: this.firstAt,
       lastAt: this.lastAt,

@@ -11,34 +11,52 @@ const KINDS: Record<string, OperationKind> = {
 
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
 
-/** A heredoc: the operator line is kept, the body up to its terminator is dropped. */
-const HEREDOC = /(<<-?[ \t]*(['"]?)(\w+)\2[^\n]*)\n[\s\S]*?(?:\n[ \t]*\3(?=\n|$)|$)/g
+/** A heredoc (not a `<<<` here-string): the operator line is kept, the body up to its terminator is dropped. */
+const HEREDOC = /((?<!<)<<(?!<)-?[ \t]*(['"]?)(\w+)\2[^\n]*)\n[\s\S]*?(?:\n[ \t]*\3(?=\n|$)|$)/g
 
 /** Single- and double-quoted strings, whose contents are code or text, not shell syntax. */
 const QUOTED = /'[^']*'|"(?:[^"\\]|\\.)*"/g
 
-/** A redirect used as a shell operator, with its target: not `=>`, `->`, `<>`, `>=` or `>&2`. */
-const REDIRECT = /(?:^|[\s;|&(])\d?>>?(?![=&])[ \t]*(\S+)/g
+/** A comment: a `#` at the start of a word, to the end of the line. */
+const COMMENT = /(^|\s)#[^\n]*/g
 
-/** `tee`, `mv` or `rm` as a command word, past any flags, with its first path token. */
-const FILE_COMMAND = /(?:^|[\s;|&(])(?:tee|mv|rm)(?:[ \t]+-\S+)*(?:[ \t]+(\S+))?/g
+/** Stands in for a quoted string while operators are matched; the index points into the saved strings. */
+const HOLE = /\u0001(\d+)\u0001/g
+
+/** A redirect used as a shell operator, with its target: not `=>`, `->`, `<>`, `>=` or `>&2`. */
+const REDIRECT = /(?:^|[\s;|&(\w])\d?>>?(?![=&])[ \t]*(\S+)/g
+
+/**
+ * `tee`, `mv` or `rm` in command position (first in the command, after `;`,
+ * `|`, `&` or `(`, optionally behind `sudo` or `xargs`), past any flags, with
+ * its first path token. `git rm` and `docker rm` are arguments, so they miss.
+ */
+const FILE_COMMAND =
+  /(?:^|[;|&(\n])\s*(?:(?:sudo|xargs)\s+(?:-\S+\s+)*)?(?:tee|mv|rm)(?=[\s;|&)]|$)(?:[ \t]+-\S+)*(?:[ \t]+(\S+))?/g
 
 const SED_INPLACE = /(?:^|[\s;|&(])sed[ \t]+-i\b/
 
 /** Targets outside the working tree: temp files and devices. */
-const OUTSIDE_TREE = /^["']*(?:\/tmp\/|\/dev\/|\$TMPDIR|\$\{TMPDIR)/
+const OUTSIDE_TREE = /^(?:\/tmp\/|\/dev\/|\$TMPDIR|\$\{TMPDIR)/
 
 /**
  * True when a shell command looks like it writes a file in the working tree.
- * Heredoc bodies and quoted strings are removed first, so code handed to
- * `bun -e` or `php -r` never matches. A heuristic: a write through an
- * interpreter is missed, and so is one whose target is built in a variable.
+ * Heredoc bodies, quoted strings and comments are taken out before the
+ * operators are matched, so code handed to `bun -e` or `php -r` never
+ * matches; a quoted target is put back before its path is judged. A
+ * heuristic: a write through an interpreter is missed, and so is one whose
+ * target is built in a variable.
  */
 function looksLikeWrite(command: string): boolean {
-  const bare = command.replace(HEREDOC, '$1').replace(QUOTED, '""')
+  const quoted: string[] = []
+  const bare = command
+    .replace(HEREDOC, '$1')
+    .replace(QUOTED, (q) => `\u0001${quoted.push(q.slice(1, -1)) - 1}\u0001`)
+    .replace(COMMENT, '$1')
+  const outside = (target: string | undefined): boolean => OUTSIDE_TREE.test((target ?? '').replace(HOLE, (_, i: string) => quoted[Number(i)] ?? ''))
   if (SED_INPLACE.test(bare)) return true
-  for (const m of bare.matchAll(REDIRECT)) if (!OUTSIDE_TREE.test(m[1] ?? '')) return true
-  for (const m of bare.matchAll(FILE_COMMAND)) if (!OUTSIDE_TREE.test(m[1] ?? '')) return true
+  for (const m of bare.matchAll(REDIRECT)) if (!outside(m[1])) return true
+  for (const m of bare.matchAll(FILE_COMMAND)) if (!outside(m[1])) return true
   return false
 }
 

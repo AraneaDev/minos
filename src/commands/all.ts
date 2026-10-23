@@ -113,7 +113,7 @@ export function renderAll(a: Aggregate): string {
     ...rows.map(line),
     '',
     `auto by mode: ${modes.length === 0 ? 'none' : modes.map(([m, n]) => `${m} ${n}`).join(', ')}`,
-    `possibly unseen writes (shell commands that look like writes, a heuristic, not in the classes above): decided ${w.decided}, auto ${w.auto}, subagent ${w.subagent}`,
+    `shell commands matching a write pattern (a loose heuristic, not counted above: it misses some writes, and many matches write outside the repository): decided ${w.decided}, auto ${w.auto}, subagent ${w.subagent}`,
     `dropped ${plural(a.duplicatesDropped, 'duplicate change', 'duplicate changes')} copied between forked or resumed sessions`,
   ]
   if (rowsExceedTotal(a)) out.push('a change copied into another project counts in both rows and once in the total')
