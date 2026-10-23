@@ -3,7 +3,7 @@ import { applyOperation, replay } from '../src/replay'
 import type { Operation } from '../src/types'
 
 const op = (over: Partial<Operation>): Operation => ({
-  file: '/a.ts', kind: 'edit', at: '', uuid: 'u', promptId: null, attestation: 'auto',
+  file: '/a.ts', kind: 'edit', at: '', uuid: 'u', toolUseId: 't', permissionMode: null, promptId: null, attestation: 'auto',
   oldString: null, newString: null, replaceAll: false, content: null, ...over,
 })
 

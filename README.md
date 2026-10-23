@@ -130,11 +130,16 @@ minos report        the default; the latest session for this directory
 minos file <path>   one file's operation history in that session
 minos undone        the changes that did not survive, on their own
 minos sessions      sessions with headline counts, to pick one
+minos sessions --all
+                    every project under ~/.claude/projects, with totals
 minos export        the ledger as data, JSON
+minos export --all  every project's counts as data, JSON
 ```
 
 `report`, `file`, `undone` and `export` each take `--session <id>` and `--project <path>`.
-`sessions` takes `--project` and `--limit <n>`.
+`sessions` takes `--project` and `--limit <n>`. `sessions` and `export` also take `--since
+YYYY-MM-DD` and `--until YYYY-MM-DD`, which bound the listing to local calendar days, both
+inclusive. Any other command rejects them. `--all` takes the same two flags.
 
 The report is coloured when stdout is a terminal, on the same scheme the cards above use: one
 colour per class, one for the undone kinds, and grey for the caveats. A pipe, a redirect,
@@ -145,7 +150,27 @@ what the tool means.
 undone counts](docs/images/sessions.svg)
 
 `minos sessions` gives you the headline counts per session, so you can pick the one you mean before
-asking for the full report.
+asking for the full report. It prints a header and a units line first: decided, auto and subagent
+count files, and undone counts changes. Each session shows its first and last local time. If the
+project moved on disk, the first line reads `recorded under N paths:` followed by the paths, and
+the sessions under all of them are listed together. A project is found when any of its transcripts
+records the directory, so a moved repository is not reported as having no transcript.
+
+`minos sessions --all` and `minos export --all` cover every project under `~/.claude/projects`.
+Here the counts are changes, meaning one Edit, Write or NotebookEdit call each, deduplicated by
+tool_use id so a forked or resumed session does not count the same call twice. Auto is broken down
+per recorded permission mode, and a line says how many duplicates were dropped. A history line gives
+the oldest and newest transcript, and the project directories that have no transcripts left. Claude
+Code prunes old transcripts (`cleanupPeriodDays`), so `--all` only covers what has not been pruned
+yet, and the totals will shrink as that happens. A project with no session in the window gets no
+row, and one line under the table counts those projects instead. With no window, that line counts
+the projects that had no session with a known time. An Edit or Write whose tool call failed or was
+refused wrote nothing, so it is left out of every count, here and in the single-session views, and
+a line says how many. A separate line counts shell commands that look like file writes. A command
+is left out of it only when it never ran: a permission denial, a `PreToolUse` hook block, a
+classifier refusal or missing verdict, or a user rejection. A command that ran and exited non-zero
+(`Exit code N`) stays in, since it may have written before it failed. It is a loose heuristic, and
+those commands are never counted in the classes.
 
 In Claude Code, `/minos` prints the report for the session you are in.
 

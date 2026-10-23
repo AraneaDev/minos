@@ -3,8 +3,10 @@ import { subagentToolUseId } from './paths'
 import { PromptIndex } from './prompts'
 import { findUndone } from './reverts'
 import { eachRecord } from './transcript'
-import type { Attestation, Operation, Prompt, UnknownRecord } from './types'
+import type { Attestation, Operation, Prompt, ShellWrite, UnknownRecord } from './types'
 import type { Undone } from './reverts'
+import { inWindow, undoneInWindow } from './window'
+import type { Window } from './window'
 
 /** One file's contribution to a total. */
 export interface FileTotals {
@@ -33,6 +35,10 @@ export interface SessionReport {
   undone: Undone[]
   unrecognisedModes: string[]
   skippedLines: number
+  /** The earliest timestamp of any record in the transcript or its subagent files, as written; null when none parses. */
+  startedAt: string | null
+  /** The latest such timestamp, as written. */
+  endedAt: string | null
   byPrompt: PromptTotals[]
   /**
    * The files with the most change applied without asking, ranked by lines
@@ -68,6 +74,19 @@ export interface SessionReport {
    * would not survive `minos export`'s JSON round trip the way an array does.
    */
   operations: Operation[]
+  /** Bash calls inside the window that look like file writes: a heuristic, outside `totals` and every other count. */
+  shellWrites: ShellWrite[]
+  /** Operations left out because their timestamp does not parse and a window is set; 0 with no window. */
+  undatedDropped: number
+  /** Shell writes left out of `shellWrites` for the same reason; 0 with no window. */
+  undatedShellWrites: number
+  /**
+   * Edits and writes inside the window whose tool call failed or was refused,
+   * so nothing changed. They are in no other count; each carries its tool_use
+   * id so an aggregate can count a forked copy once, and its file so
+   * `minos file` can say one of that file's changes was left out.
+   */
+  failedChanges: { toolUseId: string; at: string; file: string }[]
 }
 
 const lines = (text: string | null): number => {
@@ -86,8 +105,20 @@ function delta(op: Operation): { added: number; removed: number } {
  * Reads one session and everything derived from it. Two passes over the
  * transcript: the first builds the prompt index, the second the ledger, because
  * a change can only be attributed once every prompt above it has been seen.
+ *
+ * With a window, every count and list is built from the operations inside it
+ * only. Undone detection still runs over every operation, since the change
+ * that undid something may sit on the other side of the window's edge, and a
+ * finding is kept when the change that was undone is inside the window: the
+ * same rule `aggregate` applies. `startedAt`, `endedAt` and `prompts` always
+ * describe the whole session.
  */
-export async function analyseSession(paths: { transcript: string; subagents: string[] }): Promise<SessionReport> {
+export async function analyseSession(
+  paths: { transcript: string; subagents: string[] },
+  options: { window?: Window } = {},
+): Promise<SessionReport> {
+  const window = options.window ?? { since: null, until: null }
+  const inside = (op: Operation): boolean => inWindow(op.at, window)
   const prompts = new PromptIndex()
   let sessionId = ''
   let cwd = ''
@@ -100,8 +131,17 @@ export async function analyseSession(paths: { transcript: string; subagents: str
   }
 
   let skippedLines = 0
+  const bounds: { first: { at: number; iso: string } | null; last: { at: number; iso: string } | null } = { first: null, last: null }
+  const span = (r: UnknownRecord): void => {
+    if (typeof r.timestamp !== 'string') return
+    const at = Date.parse(r.timestamp)
+    if (Number.isNaN(at)) return
+    if (bounds.first === null || at < bounds.first.at) bounds.first = { at, iso: r.timestamp }
+    if (bounds.last === null || at > bounds.last.at) bounds.last = { at, iso: r.timestamp }
+  }
   const first = await eachRecord(paths.transcript, (r) => {
     header(r)
+    span(r)
     prompts.observe(r)
   })
   skippedLines += first.skipped
@@ -124,6 +164,7 @@ export async function analyseSession(paths: { transcript: string; subagents: str
       // isSidechain is forced regardless: the diff never reached the terminal,
       // whichever prompt turns out to have caused it.
       const record = graft ? { ...r, isSidechain: true, parentUuid: spawnedBy } : { ...r, isSidechain: true }
+      span(record)
       prompts.observe(record)
       ledger.observe(record, prompts)
     })
@@ -138,9 +179,12 @@ export async function analyseSession(paths: { transcript: string; subagents: str
   const seenPerLabel: Record<Attestation, Set<string>> = { decided: new Set(), auto: new Set(), subagent: new Set() }
 
   const undone: Undone[] = []
-  const perFile = ledger.byFile()
-  for (const [file, ops] of perFile) {
-    undone.push(...findUndone(file, ops, null))
+  const perFile = new Map<string, Operation[]>()
+  for (const [file, all] of ledger.byFile()) {
+    undone.push(...findUndone(file, all, null).filter((u) => undoneInWindow(u, window)))
+    const ops = all.filter(inside)
+    if (ops.length === 0) continue
+    perFile.set(file, ops)
     for (const op of ops) {
       const d = delta(op)
       totals[op.attestation].added += d.added
@@ -158,8 +202,10 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     undoneByPrompt.set(id, (undoneByPrompt.get(id) ?? 0) + 1)
   }
 
+  const everyOperation = ledger.operations()
+  const operations = everyOperation.filter(inside)
   const byPrompt: PromptTotals[] = prompts.all().map((prompt) => {
-    const ops = ledger.operations().filter((o) => o.promptId === prompt.id)
+    const ops = operations.filter((o) => o.promptId === prompt.id)
     const files = new Set(ops.map((o) => o.file))
     const added = ops.reduce((sum, o) => sum + delta(o).added, 0)
     const removed = ops.reduce((sum, o) => sum + delta(o).removed, 0)
@@ -177,8 +223,9 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     .filter((f) => f.added + f.removed > 0)
     .sort((a, b) => b.added + b.removed - (a.added + a.removed))
 
-  const operations = ledger.operations()
   const unattributedCount = operations.filter((o) => o.promptId === null).length
+  const undated = (at: string): boolean => !inWindow(at, window) && Number.isNaN(new Date(at).getTime())
+  const shellWrites = ledger.shellWrites()
 
   return {
     sessionId,
@@ -189,10 +236,19 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     undone,
     unrecognisedModes: ledger.unrecognisedModes(),
     skippedLines,
+    startedAt: bounds.first?.iso ?? null,
+    endedAt: bounds.last?.iso ?? null,
     byPrompt,
     largestAuto,
     filesTouched: perFile.size,
     unattributedCount,
     operations,
+    shellWrites: shellWrites.filter((w) => inWindow(w.at, window)),
+    undatedDropped: everyOperation.filter((o) => undated(o.at)).length,
+    undatedShellWrites: shellWrites.filter((w) => undated(w.at)).length,
+    failedChanges: ledger
+      .failedOperations()
+      .filter(inside)
+      .map((o) => ({ toolUseId: o.toolUseId, at: o.at, file: o.file })),
   }
 }

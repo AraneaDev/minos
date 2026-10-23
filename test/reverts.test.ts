@@ -4,7 +4,7 @@ import type { Operation } from '../src/types'
 import type { Undone, UndoneKind } from '../src/reverts'
 
 const op = (over: Partial<Operation>): Operation => ({
-  file: '/a.ts', kind: 'edit', at: '', uuid: 'u', promptId: null, attestation: 'auto',
+  file: '/a.ts', kind: 'edit', at: '', uuid: 'u', toolUseId: 't', permissionMode: null, promptId: null, attestation: 'auto',
   oldString: null, newString: null, replaceAll: false, content: null, ...over,
 })
 

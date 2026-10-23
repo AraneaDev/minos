@@ -1,12 +1,12 @@
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import {
   claudeHome,
   encodeProjectSlug,
-  fileHistoryDir,
-  projectDirFor,
+  projectFor,
+  recordedCwds,
   sessionFiles,
   subagentFiles,
 } from '../src/paths'
@@ -22,12 +22,6 @@ test('CLAUDE_CONFIG_DIR overrides the home directory', () => {
   expect(claudeHome()).toBe('/tmp/elsewhere')
   delete process.env.CLAUDE_CONFIG_DIR
   expect(claudeHome().endsWith('/.claude')).toBe(true)
-})
-
-test('the file history directory is per session', () => {
-  process.env.CLAUDE_CONFIG_DIR = '/tmp/elsewhere'
-  expect(fileHistoryDir('abc')).toBe('/tmp/elsewhere/file-history/abc')
-  delete process.env.CLAUDE_CONFIG_DIR
 })
 
 // The remaining tests build a fake store under a temp directory, so they
@@ -113,18 +107,18 @@ test('subagentFiles returns an empty array when the session has no subagents dir
   expect(files).toEqual([])
 })
 
-test('projectDirFor returns the encoded directory when it exists', async () => {
+test('projectFor returns the encoded directory when it exists', async () => {
   const cwd = '/root/example'
   const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
   await mkdir(projectDir, { recursive: true })
   await writeFile(join(projectDir, 'session-1.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`)
 
-  const found = await projectDirFor(cwd)
+  const found = await projectFor(cwd)
 
-  expect(found).toBe(projectDir)
+  expect(found?.dir).toBe(projectDir)
 })
 
-test('projectDirFor falls back to a project whose transcript records the cwd when the encoded guess misses', async () => {
+test('projectFor falls back to a project whose transcript records the cwd when the encoded guess misses', async () => {
   const cwd = '/root/renamed-project'
 
   // A candidate with no parseable JSON anywhere in it. On the fallback scan
@@ -152,12 +146,12 @@ test('projectDirFor falls back to a project whose transcript records the cwd whe
     ].join('\n') + '\n',
   )
 
-  const found = await projectDirFor(cwd)
+  const found = await projectFor(cwd)
 
-  expect(found).toBe(projectDir)
+  expect(found?.dir).toBe(projectDir)
 })
 
-test('projectDirFor returns null when nothing matches', async () => {
+test('projectFor returns null when nothing matches', async () => {
   const unrelatedDir = join(root, 'projects', '-root-unrelated')
   await mkdir(unrelatedDir, { recursive: true })
   await writeFile(
@@ -165,12 +159,12 @@ test('projectDirFor returns null when nothing matches', async () => {
     `${JSON.stringify({ type: 'user', cwd: '/root/unrelated' })}\n`,
   )
 
-  const found = await projectDirFor('/root/nowhere')
+  const found = await projectFor('/root/nowhere')
 
   expect(found).toBeNull()
 })
 
-test('projectDirFor finds a cwd recorded on a later line of the encoded guess, not just the first', async () => {
+test('projectFor finds a cwd recorded on a later line of the encoded guess, not just the first', async () => {
   // As on a real transcript: session-level records come first, and cwd only
   // shows up a few lines in.
   const cwd = '/root/example-later-cwd'
@@ -186,12 +180,12 @@ test('projectDirFor finds a cwd recorded on a later line of the encoded guess, n
     ].join('\n') + '\n',
   )
 
-  const found = await projectDirFor(cwd)
+  const found = await projectFor(cwd)
 
-  expect(found).toBe(projectDir)
+  expect(found?.dir).toBe(projectDir)
 })
 
-test('projectDirFor rejects the encoded guess when its transcript records a different cwd', async () => {
+test('projectFor rejects the encoded guess when its transcript records a different cwd', async () => {
   // This is the failure the function exists to prevent: the encoded name
   // happens to exist, but it belongs to a different project.
   const cwd = '/root/actually-somebody-elses-project'
@@ -202,12 +196,12 @@ test('projectDirFor rejects the encoded guess when its transcript records a diff
     `${JSON.stringify({ type: 'user', cwd: '/root/a-completely-different-project' })}\n`,
   )
 
-  const found = await projectDirFor(cwd)
+  const found = await projectFor(cwd)
 
   expect(found).toBeNull()
 })
 
-test('projectDirFor accepts the encoded guess when no cwd is recoverable anywhere in its transcript', async () => {
+test('projectFor accepts the encoded guess when no cwd is recoverable anywhere in its transcript', async () => {
   // Refusing here would make Minos report nothing on a legitimate store just
   // because a transcript happens to be short or unusual; the encoding having
   // matched is itself evidence.
@@ -219,12 +213,12 @@ test('projectDirFor accepts the encoded guess when no cwd is recoverable anywher
     [JSON.stringify({ type: 'last-prompt' }), JSON.stringify({ type: 'mode' })].join('\n') + '\n',
   )
 
-  const found = await projectDirFor(cwd)
+  const found = await projectFor(cwd)
 
-  expect(found).toBe(projectDir)
+  expect(found?.dir).toBe(projectDir)
 })
 
-test('projectDirFor does not throw when a candidate transcript cannot be read as a file, and keeps scanning', async () => {
+test('projectFor does not throw when a candidate transcript cannot be read as a file, and keeps scanning', async () => {
   const cwd = '/root/nothing-matches-here'
 
   // A ".jsonl"-named entry that is actually a directory: sessionFiles lists
@@ -242,7 +236,90 @@ test('projectDirFor does not throw when a candidate transcript cannot be read as
     `${JSON.stringify({ type: 'user', cwd: '/root/somewhere-else' })}\n`,
   )
 
-  const found = await projectDirFor(cwd)
+  const found = await projectFor(cwd)
 
   expect(found).toBeNull()
+})
+
+test('projectFor accepts the encoded directory when a newer transcript records the cwd and the oldest records an older path', async () => {
+  const cwd = '/home/tim/site'
+  const dir = join(root, 'projects', encodeProjectSlug(cwd))
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'old.jsonl'), `${JSON.stringify({ type: 'user', cwd: '/root/site' })}\n`)
+  await writeFile(join(dir, 'new.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`)
+  await utimes(join(dir, 'old.jsonl'), new Date('2024-01-01'), new Date('2024-01-01'))
+  await utimes(join(dir, 'new.jsonl'), new Date('2024-06-01'), new Date('2024-06-01'))
+
+  expect(await projectFor(cwd)).toEqual({ dir, cwds: ['/home/tim/site', '/root/site'], files: [join(dir, 'old.jsonl'), join(dir, 'new.jsonl')] })
+})
+
+test('projectFor finds a moved project through the fallback scan when the newest transcript records the cwd', async () => {
+  const cwd = '/home/tim/site'
+  const dir = join(root, 'projects', '-unrelated-name')
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'old.jsonl'), `${JSON.stringify({ type: 'user', cwd: '/root/site' })}\n`)
+  await writeFile(join(dir, 'new.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`)
+  await utimes(join(dir, 'old.jsonl'), new Date('2024-01-01'), new Date('2024-01-01'))
+  await utimes(join(dir, 'new.jsonl'), new Date('2024-06-01'), new Date('2024-06-01'))
+
+  expect((await projectFor(cwd))?.dir).toBe(dir)
+})
+
+test('projectFor accepts the guess when no transcript records a cwd', async () => {
+  const cwd = '/home/tim/quiet'
+  const dir = join(root, 'projects', encodeProjectSlug(cwd))
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'a.jsonl'), `${JSON.stringify({ type: 'mode' })}\n`)
+
+  expect(await projectFor(cwd)).toEqual({ dir, cwds: [], files: [join(dir, 'a.jsonl')] })
+})
+
+test('projectFor rejects the guess when every recovered cwd differs', async () => {
+  const cwd = '/home/tim/site'
+  const dir = join(root, 'projects', encodeProjectSlug(cwd))
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'a.jsonl'), `${JSON.stringify({ type: 'user', cwd: '/elsewhere' })}\n`)
+
+  expect(await projectFor(cwd)).toBeNull()
+})
+
+test('recordedCwds returns each distinct cwd once, sorted, and nothing for a missing directory or file', async () => {
+  const dir = join(root, 'projects', '-any')
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'a.jsonl'), `${JSON.stringify({ cwd: '/root/site' })}\n`)
+  await writeFile(join(dir, 'b.jsonl'), `${JSON.stringify({ cwd: '/home/tim/site' })}\n`)
+  await writeFile(join(dir, 'c.jsonl'), `${JSON.stringify({ cwd: '/root/site' })}\n`)
+
+  expect(await recordedCwds(await sessionFiles(dir))).toEqual(['/home/tim/site', '/root/site'])
+  expect(await recordedCwds(await sessionFiles(join(root, 'projects', '-missing')))).toEqual([])
+  expect(await recordedCwds([join(dir, 'gone.jsonl')])).toEqual([])
+})
+
+test('the fallback scan stops at the first directory that matches: no later directory is read', async () => {
+  const cwd = '/home/tim/scan-stop'
+  const first = join(root, 'projects', '-a-first')
+  const later = join(root, 'projects', '-b-later')
+  await mkdir(first, { recursive: true })
+  await mkdir(later, { recursive: true })
+  await writeFile(join(first, 'one.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`)
+  await writeFile(join(later, 'two.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`)
+  const opened = spyOn(Bun, 'file')
+  try {
+    expect((await projectFor(cwd))?.dir).toBe(first)
+    const paths = opened.mock.calls.map(([p]) => String(p))
+    expect(paths.some((p) => p.startsWith(first))).toBe(true)
+    expect(paths.some((p) => p.startsWith(later))).toBe(false)
+  } finally {
+    opened.mockRestore()
+  }
+})
+
+test('the fallback scan accepts a directory whose newest transcript matches though an older one cannot be read', async () => {
+  const cwd = '/home/tim/scan-unreadable'
+  const dir = join(root, 'projects', '-moved')
+  await mkdir(join(dir, 'old.jsonl'), { recursive: true })
+  await writeFile(join(dir, 'new.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`)
+  await utimes(join(dir, 'old.jsonl'), new Date('2024-01-01'), new Date('2024-01-01'))
+  await utimes(join(dir, 'new.jsonl'), new Date('2024-06-01'), new Date('2024-06-01'))
+  expect(await projectFor(cwd)).toEqual({ dir, cwds: [cwd], files: [join(dir, 'old.jsonl'), join(dir, 'new.jsonl')] })
 })

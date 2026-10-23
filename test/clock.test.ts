@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { CLOCK_WIDTH, clock, localDate } from '../src/clock'
+import { CLOCK_WIDTH, clock, localDate, localStamp } from '../src/clock'
 
 afterEach(() => {
   process.env.TZ = 'UTC'
@@ -63,4 +63,10 @@ test('the session date is the local date of the moment it names', () => {
   process.env.TZ = 'UTC'
   expect(localDate('2026-08-10T23:30:00Z')).toBe('2026-08-10')
   expect(localDate('not a timestamp')).toBe('(unknown date)')
+})
+
+test('a stamp is the local date and minute, or the unknown-date marker', () => {
+  process.env.TZ = 'Europe/Amsterdam'
+  expect(localStamp('2026-09-22T19:19:39.851Z')).toBe('2026-09-22 21:19')
+  expect(localStamp('nope')).toBe('(unknown date)')
 })

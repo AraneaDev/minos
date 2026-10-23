@@ -319,7 +319,7 @@ interface DirectCase {
 }
 
 const op = (overrides: Partial<Operation>): Operation => ({
-  file: '/repo/x.ts', kind: 'edit', at: '2026-09-07T19:00:00Z', uuid: 'a1', promptId: null,
+  file: '/repo/x.ts', kind: 'edit', at: '2026-09-07T19:00:00Z', uuid: 'a1', toolUseId: 't', permissionMode: null, promptId: null,
   attestation: 'decided', oldString: null, newString: null, replaceAll: false, content: null,
   ...overrides,
 })

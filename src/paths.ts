@@ -25,11 +25,6 @@ export function encodeProjectSlug(dir: string): string {
   return dir.replace(/[^a-zA-Z0-9]/g, '-')
 }
 
-/** Where the per-version file backups for one session live. */
-export function fileHistoryDir(sessionId: string): string {
-  return join(claudeHome(), 'file-history', sessionId)
-}
-
 /**
  * A file's modification time, or a sentinel that sorts before every real
  * timestamp when it cannot be read (removed between the readdir that found
@@ -121,38 +116,67 @@ async function recordedCwd(path: string): Promise<string | null> {
   return null
 }
 
+/** A project directory, every cwd its transcripts record (sorted), and its transcripts as `sessionFiles` lists them. */
+export interface ProjectMatch {
+  dir: string
+  cwds: string[]
+  /** Oldest to newest by modification time, so a caller need not list the directory again. */
+  files: string[]
+}
+
 /**
- * The project directory for a working directory. Tries the encoded name
- * first, verifying it against the cwd recorded in its own transcript, and
- * falls back to scanning every project directory for one whose transcript
- * records this cwd, because the encoding is a guess and a wrong guess would
- * report on somebody else's project without saying so.
- *
- * The two paths apply the recovered cwd differently. On the encoded guess,
- * the directory name itself is evidence: if its transcript records a
- * different cwd the guess is rejected, but if none is recoverable at all the
- * guess is still accepted, since refusing it would make Minos report nothing
- * on a legitimate, if short or unusual, transcript. On the fallback scan
- * there is no such prior evidence, so only an exact match is accepted; a
- * candidate with an unrecoverable cwd is skipped rather than guessed at.
+ * The distinct cwds recorded across the given transcripts, sorted. Each
+ * transcript is read only as far as `recordedCwd` reads it, a bounded head,
+ * so no file is ever read whole. A repository that was moved or renamed
+ * records more than one path here. An unreadable transcript contributes
+ * nothing rather than throwing.
  */
-export async function projectDirFor(cwd: string): Promise<string | null> {
+export async function recordedCwds(files: string[]): Promise<string[]> {
+  const found = new Set<string>()
+  for (const file of files) {
+    const recorded = await recordedCwd(file)
+    if (recorded !== null) found.add(recorded)
+  }
+  return [...found].sort()
+}
+
+/**
+ * The project for a working directory. Tries the encoded name first,
+ * verifying it against the cwds recorded in its own transcripts, and falls
+ * back to scanning every project directory for one whose transcripts record
+ * this cwd, because the encoding is a guess and a wrong guess would report on
+ * somebody else's project without saying so.
+ *
+ * Any transcript may carry the cwd, not just the oldest: a project that was
+ * moved records its old path in early sessions and the new one in later ones.
+ *
+ * The two paths apply the recovered cwds differently. On the encoded guess,
+ * the directory name itself is evidence: it is rejected only when cwds were
+ * recovered and none equals this one, and accepted when none is recoverable
+ * at all, since refusing it would make Minos report nothing on a legitimate,
+ * if short or unusual, transcript. On the fallback scan there is no such
+ * prior evidence, so a directory is accepted only when a transcript records
+ * exactly this cwd. Directories are scanned in name order, newest transcript
+ * first, and the first match ends the scan: no later directory is read. The
+ * matching directory's heads are then all read once more for its cwds.
+ */
+export async function projectFor(cwd: string): Promise<ProjectMatch | null> {
   const root = join(claudeHome(), 'projects')
 
   const guess = join(root, encodeProjectSlug(cwd))
-  const guessFiles = await sessionFiles(guess)
-  if (guessFiles.length > 0) {
-    const recorded = await recordedCwd(guessFiles[0]!)
-    if (recorded === null || recorded === cwd) return guess
+  const guessed = await sessionFiles(guess)
+  if (guessed.length > 0) {
+    const cwds = await recordedCwds(guessed)
+    if (cwds.length === 0 || cwds.includes(cwd)) return { dir: guess, cwds, files: guessed }
   }
 
   const names = await readdir(root).catch(() => [] as string[])
-  for (const name of names) {
+  for (const name of names.sort()) {
     const candidate = join(root, name)
-    const [first] = await sessionFiles(candidate)
-    if (first === undefined) continue
-    const recorded = await recordedCwd(first)
-    if (recorded === cwd) return candidate
+    const files = await sessionFiles(candidate)
+    for (const file of [...files].reverse()) {
+      if ((await recordedCwd(file)) === cwd) return { dir: candidate, cwds: await recordedCwds(files), files }
+    }
   }
   return null
 }

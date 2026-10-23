@@ -1,5 +1,5 @@
 import { CLOCK_WIDTH, clock } from '../clock'
-import { PROMPT_REF_WIDTH, pathCol, promptRef, sanitise, sessionOrigin } from '../report'
+import { PROMPT_REF_WIDTH, failedNote, pathCol, promptRef, sanitise, sessionOrigin } from '../report'
 import { analyseSession } from '../session'
 import type { SessionPaths } from './report'
 
@@ -13,10 +13,12 @@ import type { SessionPaths } from './report'
  */
 export async function runUndone(paths: SessionPaths): Promise<string> {
   const report = await analyseSession(paths)
-  if (report.undone.length === 0) return 'Every change made in this session was still standing at the end of it.'
+  const failed = report.failedChanges.length > 0 ? [failedNote(report.failedChanges.length)] : []
+  if (report.undone.length === 0) {
+    return ['Every change made in this session was still standing at the end of it.', ...failed].join('\n')
+  }
   const origin = sessionOrigin(report)
-  return report.undone
-    .map((u) => {
+  const rows = report.undone.map((u) => {
       const where = u.line === null ? u.file : `${u.file}:${u.line}`
       const introducedAt = clock(u.introduced.at, origin).padEnd(CLOCK_WIDTH)
       const undoneAt = clock(u.undoneBy.at, origin).padEnd(CLOCK_WIDTH)
@@ -24,5 +26,5 @@ export async function runUndone(paths: SessionPaths): Promise<string> {
       const undoneRef = promptRef(report.prompts, u.undoneBy.promptId).padEnd(PROMPT_REF_WIDTH)
       return `${pathCol(sanitise(where), 40)}${u.kind.padEnd(13)}${introducedAt} ${introducedRef} to ${undoneAt} ${undoneRef}`
     })
-    .join('\n')
+  return [...rows, ...failed].join('\n')
 }

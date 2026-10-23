@@ -1,16 +1,23 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { resolveSession, runReport } from '../src/commands/report'
 import { runUndone } from '../src/commands/undone'
 import { runFile } from '../src/commands/file'
+import { chmod } from 'node:fs/promises'
 import { runSessions } from '../src/commands/sessions'
-import { runExport } from '../src/commands/export'
+import { localDate, localStamp } from '../src/clock'
+import type { Window } from '../src/window'
+import { runExport, runExportAll } from '../src/commands/export'
+import { collectAll, renderAll } from '../src/commands/all'
+import { DECIDED_NOTE } from '../src/caveats'
 import { main } from '../src/cli'
 import { encodeProjectSlug } from '../src/paths'
 import { FIXTURE_DIR } from '../scripts/make-fixtures'
 
+const OPEN: Window = { since: null, until: null }
+const originalTz = process.env.TZ
 const paths = { transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] }
 
 test('report prints the sectioned report', async () => {
@@ -153,10 +160,15 @@ describe('commands that resolve a session against the transcript store', () => {
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'minos-commands-'))
     process.env.CLAUDE_CONFIG_DIR = root
+    // Windows are local calendar days, so every windowed assertion below runs
+    // on one fixed zone rather than whichever the machine happens to use.
+    process.env.TZ = 'UTC'
   })
 
   afterEach(async () => {
     delete process.env.CLAUDE_CONFIG_DIR
+    if (originalTz === undefined) delete process.env.TZ
+    else process.env.TZ = originalTz
     await rm(root, { recursive: true, force: true })
   })
 
@@ -235,7 +247,7 @@ describe('commands that resolve a session against the transcript store', () => {
   // runSessions: the "no store" branch. A regression that threw instead of
   // reporting, or that reported success, would break this.
   test('sessions returns nothing at all when there is no transcript store for the directory', async () => {
-    expect(await runSessions('/root/nothing-here', 10)).toBeNull()
+    expect(await runSessions('/root/nothing-here', 10, OPEN)).toBeNull()
   })
 
   // Finding 1: runSessions passed `subagents: []` to every row's analyseSession
@@ -262,8 +274,9 @@ describe('commands that resolve a session against the transcript store', () => {
     }
     await writeFile(join(subagentsDir, 'agent-1.jsonl'), JSON.stringify(subagentChange))
 
-    const text = await runSessions(cwd, 10)
-    expect(text).toBe('sess-sub  decided 0  auto 0  subagent 1  undone 0')
+    const text = await runSessions(cwd, 10, OPEN)
+    const stamp = localStamp('2026-09-07T10:00:00Z')
+    expect((text ?? '').split('\n')[2]).toBe(`sess-sub  ${stamp}  ${localStamp('2026-09-07T10:01:00Z')}        0     0         1       0`)
   })
 
   // runSessions: the listing branch, plus the limit. Two sessions are
@@ -296,15 +309,121 @@ describe('commands that resolve a session against the transcript store', () => {
     ]
     await writeFile(join(projectDir, 'sess-002.jsonl'), sessionB.map((r) => JSON.stringify(r)).join('\n'))
 
-    const full = await runSessions(cwd, 10)
+    const full = await runSessions(cwd, 10, OPEN)
     expect(full).not.toBeNull()
-    const lines = (full ?? '').split('\n')
+    const lines = (full ?? '').split('\n').slice(2)
     expect(lines.length).toBe(2)
-    expect(lines[0]).toBe('sess-001  decided 1  auto 0  subagent 0  undone 0')
-    expect(lines[1]).toBe('sess-002  decided 0  auto 1  subagent 0  undone 1')
+    expect(lines[0]).toEndWith('        1     0         0       0')
+    expect(lines[1]).toEndWith('        0     1         0       1')
+    expect(lines[0]!.startsWith('sess-001')).toBe(true)
+    expect(lines[1]!.startsWith('sess-002')).toBe(true)
 
-    const limited = await runSessions(cwd, 1)
-    expect((limited ?? '').split('\n')).toEqual([lines[1]])
+    const limited = await runSessions(cwd, 1, OPEN)
+    expect((limited ?? '').split('\n').slice(2)).toEqual([lines[1]!])
+  })
+
+  /** Two sessions, one on 09-01 and one on 09-02, plus a third on 09-03. */
+  async function threeSessions(cwd: string): Promise<void> {
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    for (const [id, day] of [['sess-001', '01'], ['sess-002', '02'], ['sess-003', '03']] as const) {
+      const lines = [
+        { type: 'user', uuid: `${id}-u`, parentUuid: null, promptId: `${id}-p`, permissionMode: 'default', timestamp: `2026-09-${day}T10:00:00Z`, sessionId: id, cwd, message: { content: 'hi' } },
+        { type: 'assistant', uuid: `${id}-a`, parentUuid: `${id}-u`, timestamp: `2026-09-${day}T10:02:00Z`, isSidechain: false, message: { content: [{ type: 'tool_use', id: `${id}-t`, name: 'Write', input: { file_path: '/repo/a.ts', content: 'x\n' } }] } },
+      ]
+      await writeFile(join(projectDir, `${id}.jsonl`), lines.map((r) => JSON.stringify(r)).join('\n'))
+    }
+  }
+  const ids = (text: string | null) => (text ?? '').split('\n').filter((l) => l.startsWith('sess-')).map((l) => l.slice(0, 8))
+
+  test("sessions prints each session's first and last time and states its units", async () => {
+    const cwd = '/root/fake-project-sessions-units'
+    await threeSessions(cwd)
+    const lines = ((await runSessions(cwd, 10, OPEN)) ?? '').split('\n')
+    expect(lines[0]).toBe('session   first             last              decided  auto  subagent  undone')
+    expect(lines[1]).toBe('          (decided, auto and subagent count files; undone counts changes)')
+    expect(lines[3]).toContain(`${localStamp('2026-09-02T10:00:00Z')}  ${localStamp('2026-09-02T10:02:00Z')}`)
+  })
+
+  test('sessions with --since leaves out sessions that ended before it and prints the window', async () => {
+    const cwd = '/root/fake-project-sessions-since'
+    await threeSessions(cwd)
+    const since = ((await runSessions(cwd, 10, { since: '2026-09-02', until: null })) ?? '')
+    expect(ids(since)).toEqual(['sess-002', 'sess-003'])
+    expect(since.split('\n').at(-1)).toBe(`window: 2026-09-02 to ${localDate(new Date().toISOString())}`)
+    const until = (await runSessions(cwd, 10, { since: null, until: '2026-09-01' })) ?? ''
+    expect(ids(until)).toEqual(['sess-001'])
+    expect(until.split('\n').at(-1)).toBe('window: start of history to 2026-09-01')
+  })
+
+  test('sessions counts only the in-window changes of a session that spans the boundary, as --all does', async () => {
+    const cwd = '/root/fake-project-sessions-span'
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    const write = (id: string, at: string, file: string) => ({ type: 'assistant', uuid: id, parentUuid: 'span-u', timestamp: at, isSidechain: false, message: { content: [{ type: 'tool_use', id, name: 'Write', input: { file_path: file, content: 'x\n' } }] } })
+    const lines = [
+      { type: 'user', uuid: 'span-u', parentUuid: null, promptId: 'span-p', permissionMode: 'acceptEdits', timestamp: '2026-09-21T23:00:00Z', sessionId: 'span', cwd, message: { content: 'go' } },
+      write('w1', '2026-09-21T23:01:00Z', '/repo/old.ts'),
+      write('w2', '2026-09-22T10:00:00Z', '/repo/new.ts'),
+    ]
+    await writeFile(join(projectDir, 'span.jsonl'), lines.map((r) => JSON.stringify(r)).join('\n'))
+    const window = { since: '2026-09-22', until: null }
+    const row = (await runSessions(cwd, 10, window) ?? '').split('\n').find((l) => l.startsWith('span'))
+    expect(row?.split(/\s+/).slice(-4)).toEqual(['0', '1', '0', '0'])
+    const all = renderAll(await collectAll(window)).split('\n').find((l) => l.startsWith('total'))
+    expect(all?.split(/\s+/)).toEqual(['total', '1', '0', '1', '0', '0'])
+  })
+
+  test('sessions applies the window before the limit, so older in-window sessions are still listed', async () => {
+    const cwd = '/root/fake-project-sessions-window-limit'
+    await threeSessions(cwd)
+    expect(ids(await runSessions(cwd, 1, { since: null, until: '2026-09-01' }))).toEqual(['sess-001'])
+    expect(ids(await runSessions(cwd, 2, { since: '2026-09-02', until: null }))).toEqual(['sess-002', 'sess-003'])
+  })
+
+  test('a project recorded under a single path prints no notice', async () => {
+    const cwd = '/root/fake-project-one-path'
+    await threeSessions(cwd)
+    const lines = ((await runSessions(cwd, 10, OPEN)) ?? '').split('\n')
+    expect(lines[0]).toBe('session   first             last              decided  auto  subagent  undone')
+    expect(lines.some((l) => l.startsWith('recorded under'))).toBe(false)
+  })
+
+  test('a session with no readable timestamp prints (unknown date) and is kept in a window', async () => {
+    const cwd = '/root/fake-project-undated'
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(join(projectDir, 'undated1.jsonl'), JSON.stringify({ type: 'user', uuid: 'u', parentUuid: null, sessionId: 'undated1', cwd, message: { content: 'hi' } }))
+    const text = (await runSessions(cwd, 10, { since: '2026-09-22', until: null })) ?? ''
+    const row = text.split('\n').find((l) => l.startsWith('undated1'))
+    expect(row).toBe(`undated1  ${'(unknown date)'.padEnd(16)}  ${'(unknown date)'.padEnd(16)}        0     0         0       0`)
+  })
+
+  test('an empty listing after the window still prints the header and the window line', async () => {
+    const cwd = '/root/fake-project-empty-window'
+    await threeSessions(cwd)
+    const lines = ((await runSessions(cwd, 10, { since: '2026-10-01', until: '2026-10-02' })) ?? '').split('\n')
+    expect(lines).toEqual([
+      'session   first             last              decided  auto  subagent  undone',
+      '          (decided, auto and subagent count files; undone counts changes)',
+      'window: 2026-10-01 to 2026-10-02',
+    ])
+  })
+
+  test('sessions lists every session of a project recorded under two paths, and says so once', async () => {
+    const cwd = '/home/tim/site'
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    const record = (id: string, recorded: string) =>
+      JSON.stringify({ type: 'user', uuid: `${id}-u`, parentUuid: null, promptId: `${id}-p`, permissionMode: 'default', timestamp: '2026-09-01T10:00:00Z', sessionId: id, cwd: recorded, message: { content: 'hi' } })
+    await writeFile(join(projectDir, 'sess-001.jsonl'), record('sess-001', '/root/site'))
+    await writeFile(join(projectDir, 'sess-002.jsonl'), record('sess-002', cwd))
+
+    const lines = ((await runSessions(cwd, 10, OPEN)) ?? '').split('\n')
+    const notice = 'recorded under 2 paths: /home/tim/site, /root/site'
+    expect(lines[0]).toBe(notice)
+    expect(lines.filter((l) => l === notice).length).toBe(1)
+    expect(lines.filter((l) => /^sess-00\d /.test(l)).length).toBe(2)
   })
 
   // Ruling A1: a bad --limit must fail loudly rather than silently reporting
@@ -425,5 +544,240 @@ test('file prints times in the reader\'s own zone', async () => {
     expect(text).not.toContain('19:02')
   } finally {
     process.env.TZ = 'UTC'
+  }
+})
+
+// Single-session export with a window: every number in the JSON comes from
+// changes inside the window, and an undone change is kept when the change
+// that was undone is inside it, whenever the undoing happened.
+test('export with a window counts only in-window changes and keeps undone findings by their introducing change', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'minos-export-window-'))
+  const transcript = join(dir, 'session.jsonl')
+  const records = [
+    { type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'acceptEdits', timestamp: '2026-09-01T10:00:00Z', sessionId: 's', cwd: '/repo', message: { content: 'edit' } },
+    { type: 'assistant', uuid: 'a1', parentUuid: 'u1', timestamp: '2026-09-01T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/repo/a.ts', old_string: 'x', new_string: 'y' } }] } },
+    { type: 'assistant', uuid: 'a2', parentUuid: 'u1', timestamp: '2026-09-03T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't2', name: 'Edit', input: { file_path: '/repo/a.ts', old_string: 'y', new_string: 'x' } }] } },
+    { type: 'assistant', uuid: 'a3', parentUuid: 'u1', timestamp: '2026-09-03T10:02:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't3', name: 'Write', input: { file_path: '/repo/b.ts', content: 'one\ntwo\n' } }] } },
+  ]
+  await writeFile(transcript, records.map((r) => JSON.stringify(r)).join('\n'))
+  const at = { transcript, subagents: [] }
+  try {
+    const open = JSON.parse(await runExport(at))
+    expect('window' in open).toBe(false)
+    expect(open.operations.length).toBe(3)
+    expect(open.undone.length).toBe(1)
+
+    const late = JSON.parse(await runExport(at, { since: '2026-09-02', until: null }))
+    expect(late.window).toEqual({ since: '2026-09-02', until: null })
+    expect(late.operations.map((o: { toolUseId: string }) => o.toolUseId)).toEqual(['t2', 't3'])
+    expect(late.undone.length).toBe(0)
+    expect(late.totals.auto).toEqual({ files: 2, added: 3, removed: 1 })
+    expect(late.filesTouched).toBe(2)
+    expect(late.byPrompt[0].added).toBe(3)
+
+    expect(late.undatedDropped).toBe(0)
+    expect('undatedDropped' in open).toBe(false)
+
+    const early = JSON.parse(await runExport(at, { since: null, until: '2026-09-01' }))
+    expect(early.operations.map((o: { toolUseId: string }) => o.toolUseId)).toEqual(['t1'])
+    expect(early.undone.length).toBe(1)
+    expect(early.byPrompt[0].undone).toBe(1)
+    expect(early.largestAuto).toEqual([{ file: '/repo/a.ts', added: 1, removed: 1, promptIndex: 1 }])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+// --all walks a whole fake store: one directory that holds no transcript any
+// more, one with a parent session and a fork that copies one of its changes,
+// and one plain project.
+describe('every project at once', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'minos-all-'))
+    process.env.CLAUDE_CONFIG_DIR = root
+    // Windows are local calendar days, so every windowed assertion below runs
+    // on one fixed zone rather than whichever the machine happens to use.
+    process.env.TZ = 'UTC'
+    const projects = join(root, 'projects')
+    const write = async (dir: string, name: string, records: object[]): Promise<void> => {
+      await mkdir(join(projects, dir), { recursive: true })
+      await writeFile(join(projects, dir, name), records.map((r) => JSON.stringify(r)).join('\n'))
+    }
+    await mkdir(join(projects, '-gone'), { recursive: true })
+    await writeFile(join(projects, '-gone', 'notes.txt'), 'pruned')
+
+    const prompt = { type: 'user', uuid: 'a-u1', parentUuid: null, promptId: 'a-p1', permissionMode: 'acceptEdits', timestamp: '2026-09-10T10:00:00Z', sessionId: 'parent', cwd: '/repo/a', message: { content: 'go' } }
+    const first = { type: 'assistant', uuid: 'a-a1', parentUuid: 'a-u1', timestamp: '2026-09-10T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'a-t1', name: 'Write', input: { file_path: '/repo/a/x.ts', content: 'x\n' } }] } }
+    const second = { type: 'assistant', uuid: 'a-a2', parentUuid: 'a-u1', timestamp: '2026-09-10T10:02:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'a-t2', name: 'Edit', input: { file_path: '/repo/a/x.ts', old_string: 'x', new_string: 'y' } }] } }
+    await write('-repo-a', 'parent.jsonl', [prompt, first, second])
+    // The fork keeps the copied records' original timestamps, as Claude Code does.
+    const own = { type: 'assistant', uuid: 'f-a3', parentUuid: 'a-u1', timestamp: '2026-09-11T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'f-t3', name: 'Write', input: { file_path: '/repo/a/y.ts', content: 'y\n' } }] } }
+    await write('-repo-a', 'fork.jsonl', [{ ...prompt, sessionId: 'fork' }, first, own])
+
+    await write('-repo-b', 'plain.jsonl', [
+      { type: 'user', uuid: 'b-u1', parentUuid: null, promptId: 'b-p1', permissionMode: 'default', timestamp: '2026-09-12T10:00:00Z', sessionId: 'plain', cwd: '/repo/b', message: { content: 'go' } },
+      { type: 'assistant', uuid: 'b-a1', parentUuid: 'b-u1', timestamp: '2026-09-12T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'b-t1', name: 'Write', input: { file_path: '/repo/b/z.ts', content: 'z\n' } }] } },
+    ])
+  })
+
+  afterEach(async () => {
+    delete process.env.CLAUDE_CONFIG_DIR
+    if (originalTz === undefined) delete process.env.TZ
+    else process.env.TZ = originalTz
+    await rm(root, { recursive: true, force: true })
+  })
+
+  test('renderAll prints a row per project, the total, the window, the dedup count and what the history covers', async () => {
+    const lines = renderAll(await collectAll({ since: '2026-09-01', until: '2026-09-30' })).split('\n')
+    expect(lines[0]).toBe('MINOS  all projects  window 2026-09-01 to 2026-09-30')
+    expect(lines[1]).toBe('counts are changes: one Edit, Write or NotebookEdit tool call each, deduplicated by tool_use id')
+    expect(lines[3]).toBe('project  sessions  decided  auto  subagent  undone')
+    expect(lines[4]).toBe('/repo/a         2        0     3         0       0')
+    expect(lines[5]).toBe('/repo/b         1        1     0         0       0')
+    expect(lines[6]).toBe('total           3        1     3         0       0')
+    expect(lines).toContain('auto by mode: acceptEdits 3')
+    expect(lines).toContain('shell commands matching a write pattern (a loose heuristic, not counted above: it misses some writes, and many matches write outside the repository): decided 0, auto 0, subagent 0')
+    expect(lines).toContain('dropped 1 duplicate change copied between forked or resumed sessions')
+    expect(lines.at(-1)).toBe('history: oldest transcript 2026-09-10, newest 2026-09-12; 1 project directory has no transcripts left (cleanupPeriodDays prunes them)')
+  })
+
+  test('renderAll with a window counts only the changes inside it', async () => {
+    const lines = renderAll(await collectAll({ since: '2026-09-11', until: null })).split('\n')
+    expect(lines[0]).toStartWith('MINOS  all projects  window 2026-09-11 to ')
+    expect(lines.find((l) => l.startsWith('/repo/a'))).toBe('/repo/a         1        0     1         0       0')
+    expect(lines).toContain('dropped 0 duplicate changes copied between forked or resumed sessions')
+  })
+
+  test('runExportAll gives the same total as the text, with the auto modes', async () => {
+    const parsed = JSON.parse((await runExportAll({ since: null, until: null })) ?? '')
+    const totalRow = renderAll(await collectAll({ since: null, until: null })).split('\n').find((l) => l.startsWith('total'))
+    const [, sessions, decided, auto, subagent, undone] = (totalRow ?? '').split(/\s+/).map(Number)
+    expect(parsed.total.sessions).toBe(sessions)
+    expect(parsed.total.changes).toEqual({ decided, auto, subagent, undone })
+    expect(parsed.total.autoModes).toEqual({ acceptEdits: 3 })
+    expect(parsed.emptyProjectDirs).toBe(1)
+  })
+
+  test('renderAll carries the decided caveat when decided is above zero, and the JSON carries decidedNote', async () => {
+    const all = await collectAll(OPEN)
+    expect(all.total.changes.decided).toBeGreaterThan(0)
+    expect(renderAll(all).split('\n')).toContain(DECIDED_NOTE)
+    const parsed = JSON.parse((await runExportAll(OPEN)) ?? '')
+    expect(parsed.total.decidedNote).toBe(DECIDED_NOTE)
+    expect(parsed.projects[0].decidedNote).toBe(DECIDED_NOTE)
+  })
+
+  test('renderAll leaves the decided caveat out when nothing is decided', async () => {
+    const all = await collectAll({ since: '2026-09-10', until: '2026-09-11' })
+    expect(all.total.changes.decided).toBe(0)
+    expect(renderAll(all)).not.toContain('decided is inferred')
+    expect(renderAll(all)).not.toContain('unreadable')
+  })
+
+  test.skipIf(process.getuid?.() === 0)('an unreadable transcript is skipped and counted instead of aborting --all', async () => {
+    const bad = join(root, 'projects', '-repo-b', 'locked.jsonl')
+    await writeFile(bad, JSON.stringify({ type: 'user', uuid: 'l', parentUuid: null, timestamp: '2026-09-13T10:00:00Z', sessionId: 'locked', cwd: '/repo/b', message: { content: 'go' } }))
+    await utimes(bad, new Date('2030-01-01'), new Date('2030-01-01'))
+    await chmod(bad, 0)
+    try {
+      const all = await collectAll(OPEN)
+      expect(all.unreadableSkipped).toBe(1)
+      expect(renderAll(all).split('\n')).toContain('skipped 1 unreadable transcript')
+      expect(JSON.parse((await runExportAll(OPEN)) ?? '').unreadableSkipped).toBe(1)
+    } finally {
+      await chmod(bad, 0o644)
+    }
+  })
+
+  const writeProject = async (dir: string, name: string, records: object[]): Promise<void> => {
+    await mkdir(join(root, 'projects', dir), { recursive: true })
+    await writeFile(join(root, 'projects', dir, name), records.map((r) => JSON.stringify(r)).join('\n'))
+  }
+
+  test('a change forked into another project counts in both rows, once in the total, and the table says so', async () => {
+    const prompt = { type: 'user', uuid: 'a-u1', parentUuid: null, promptId: 'a-p1', permissionMode: 'acceptEdits', timestamp: '2026-09-10T10:00:00Z', sessionId: 'copy', cwd: '/repo/c', message: { content: 'go' } }
+    const copied = { type: 'assistant', uuid: 'a-a1', parentUuid: 'a-u1', timestamp: '2026-09-10T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'a-t1', name: 'Write', input: { file_path: '/repo/a/x.ts', content: 'x\n' } }] } }
+    await writeProject('-repo-c', 'copy.jsonl', [prompt, copied])
+    const all = await collectAll(OPEN)
+    expect(all.projects.find((p) => p.dir.endsWith('-repo-c'))?.changes.auto).toBe(1)
+    const lines = renderAll(all).split('\n')
+    expect(lines.find((l) => l.startsWith('total'))).toBe('total           4        1     3         0       0')
+    expect(lines).toContain('a change copied into another project counts in both rows and once in the total')
+  })
+
+  test('the table leaves out rows with no session in the window and counts them; the total and the JSON keep them', async () => {
+    const window = { since: '2026-09-12', until: null }
+    const lines = renderAll(await collectAll(window)).split('\n')
+    expect(lines.some((l) => l.startsWith('/repo/a'))).toBe(false)
+    expect(lines.find((l) => l.startsWith('/repo/b'))).toBe('/repo/b         1        1     0         0       0')
+    expect(lines).toContain('1 project had no session in the window')
+    const parsed = JSON.parse((await runExportAll(window)) ?? '')
+    expect(parsed.projects.map((p: { cwds: string[] }) => p.cwds[0])).toEqual(['/repo/b', '/repo/a'])
+    expect(renderAll(await collectAll(OPEN))).not.toContain('had no session in the window')
+  })
+
+  test('a long project path is cut from the front so the column stays within 48 characters', async () => {
+    const long = `/tmp/claude-0/${'scratch-'.repeat(12)}end`
+    await writeProject('-long', 'l.jsonl', [
+      { type: 'user', uuid: 'l-u1', parentUuid: null, promptId: 'l-p1', permissionMode: 'default', timestamp: '2026-09-12T10:00:00Z', sessionId: 'l', cwd: long, message: { content: 'go' } },
+    ])
+    const lines = renderAll(await collectAll(OPEN)).split('\n')
+    const row = lines.find((l) => l.endsWith('scratch-end         1        0     0         0       0'))
+    expect(row?.startsWith('…')).toBe(true)
+    expect(lines[3]).toBe(`${'project'.padEnd(48)}  sessions  decided  auto  subagent  undone`)
+  })
+
+  test('every project row carries the shell-write and decided notes, not only the total', async () => {
+    const parsed = JSON.parse((await runExportAll(OPEN)) ?? '')
+    for (const p of parsed.projects) {
+      expect(p.possiblyUnseenWritesNote).toContain('loose heuristic')
+      expect(p.decidedNote).toBe(DECIDED_NOTE)
+      expect(p.undatedShellWrites).toBe(0)
+    }
+  })
+
+  test('a window names the shell writes it could not place, and says nothing when there are none', async () => {
+    const bash = (uuid: string, timestamp: string) => ({ type: 'assistant', uuid, parentUuid: 'b-u1', timestamp, isSidechain: false, message: { content: [{ type: 'tool_use', id: uuid, name: 'Bash', input: { command: 'rm src/old.ts' } }] } })
+    await writeProject('-repo-d', 'shell.jsonl', [
+      { type: 'user', uuid: 'b-u1', parentUuid: null, promptId: 'b-p1', permissionMode: 'default', timestamp: '2026-09-12T10:00:00Z', sessionId: 'shell', cwd: '/repo/d', message: { content: 'go' } },
+      bash('sh1', '2026-09-12T10:01:00Z'),
+      bash('sh2', 'garbage'),
+    ])
+    const windowed = await collectAll({ since: '2026-09-01', until: null })
+    expect(windowed.total.undatedShellWrites).toBe(1)
+    const lines = renderAll(windowed).split('\n')
+    expect(lines).toContain('left out 1 shell command matching a write pattern with no readable timestamp, which no window can place')
+    expect(lines.some((l) => l.includes('decided 1, auto 0, subagent 0'))).toBe(true)
+    expect(renderAll(await collectAll(OPEN))).not.toContain('which no window can place')
+  })
+
+  test('a project recorded under several paths prints its newest and says how many older ones it has', async () => {
+    const projects = join(root, 'projects', '-repo-b')
+    await writeFile(join(projects, 'moved.jsonl'), JSON.stringify({ type: 'user', uuid: 'm-u1', parentUuid: null, promptId: 'm-p1', permissionMode: 'default', timestamp: '2026-09-13T10:00:00Z', sessionId: 'moved', cwd: '/home/b', message: { content: 'go' } }))
+    // Newer than the beforeEach transcripts by mtime, whatever the clock resolution.
+    await utimes(join(projects, 'moved.jsonl'), new Date('2030-01-01'), new Date('2030-01-01'))
+    const text = renderAll(await collectAll({ since: null, until: null }))
+    expect(text).toContain('/home/b (+1 older path)')
+  })
+})
+
+test('export with a window counts the changes it dropped for lack of a timestamp', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'minos-export-undated-'))
+  const transcript = join(dir, 'session.jsonl')
+  const call = (uuid: string, id: string, timestamp: string) => ({ type: 'assistant', uuid, parentUuid: 'u1', timestamp, isSidechain: false, message: { content: [{ type: 'tool_use', id, name: 'Write', input: { file_path: `/repo/${id}.ts`, content: 'x\n' } }] } })
+  const records = [
+    { type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'acceptEdits', timestamp: '2026-09-03T10:00:00Z', sessionId: 's', cwd: '/repo', message: { content: 'go' } },
+    call('a1', 't1', '2026-09-03T10:01:00Z'),
+    call('a2', 't2', 'garbage'),
+  ]
+  await writeFile(transcript, records.map((r) => JSON.stringify(r)).join('\n'))
+  try {
+    const windowed = JSON.parse(await runExport({ transcript, subagents: [] }, { since: '2026-09-02', until: null }))
+    expect(windowed.undatedDropped).toBe(1)
+    expect(windowed.operations.length).toBe(1)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
   }
 })

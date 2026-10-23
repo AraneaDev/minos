@@ -1,5 +1,5 @@
 import { CLOCK_WIDTH, clock } from '../clock'
-import { PROMPT_REF_WIDTH, plural, promptRef, sanitise, sessionOrigin } from '../report'
+import { PROMPT_REF_WIDTH, failedNote, plural, promptRef, sanitise, sessionOrigin } from '../report'
 import { analyseSession } from '../session'
 import type { SessionPaths } from './report'
 
@@ -32,9 +32,11 @@ export async function runFile(paths: SessionPaths, target: string): Promise<stri
   const report = await analyseSession(paths)
   const ops = report.operations.filter((op) => matchesTarget(op.file, target))
   const rows = report.undone.filter((u) => matchesTarget(u.file, target))
+  const failed = report.failedChanges.filter((f) => matchesTarget(f.file, target)).length
+  const failedLines = failed > 0 ? [failedNote(failed)] : []
   const origin = sessionOrigin(report)
 
-  if (ops.length === 0) return `${sanitise(target)}: no operations in this session`
+  if (ops.length === 0) return [`${sanitise(target)}: no operations in this session`, ...failedLines].join('\n')
 
   const lines: string[] = [
     `${sanitise(target)}: ${rows.length} of its changes did not survive`,
@@ -57,5 +59,5 @@ export async function runFile(paths: SessionPaths, target: string): Promise<stri
     }),
   )
 
-  return lines.join('\n')
+  return [...lines, ...failedLines].join('\n')
 }

@@ -1,4 +1,5 @@
 import { basename } from 'node:path'
+import { DECIDED_NOTE } from './caveats'
 import { CLOCK_WIDTH, clock, localDate } from './clock'
 import type { SessionReport } from './session'
 import type { Prompt } from './types'
@@ -33,6 +34,14 @@ export const pathCol = (text: string, width: number): string =>
 
 /** A count with its word in the right number, e.g. "1 file" against "3 files". */
 export const plural = (n: number, singular: string, pluralWord: string): string => `${n} ${n === 1 ? singular : pluralWord}`
+
+/**
+ * The caveat for edits and writes whose tool call failed or was refused, so a
+ * view that leaves them out says so. Shared by `minos report`, `minos undone`
+ * and `minos file`, so the three never word it differently.
+ */
+export const failedNote = (n: number): string =>
+  `Left out ${plural(n, 'change', 'changes')} whose tool call failed or was refused, so nothing was written.`
 
 /**
  * The prompt named for one side of a finding: "prompt N" when `promptId`
@@ -197,6 +206,9 @@ export function renderReport(report: SessionReport, options?: RenderOptions): st
   if (report.skippedLines > 0) {
     out.push(`  ${report.skippedLines} transcript lines did not parse and were skipped.`)
   }
+  if (report.failedChanges.length > 0) {
+    out.push(`  ${failedNote(report.failedChanges.length)}`)
+  }
   if (report.unattributedCount > 0) {
     out.push(
       `  ${plural(report.unattributedCount, 'change', 'changes')} could not be attributed to a prompt. They are counted above but do not appear in the BY PROMPT table above, and an unattributed undone change does not appear in that table's undone column either.`,
@@ -210,9 +222,7 @@ export function renderReport(report: SessionReport, options?: RenderOptions): st
   // settings at report time, never the settings that were in force when the
   // session ran, since only the former is ever recoverable.
   if (report.totals.decided.files > 0) {
-    out.push(
-      '  decided is inferred from permission mode alone, not from a recorded approval; a standing allow rule can mean nothing was ever put on screen.',
-    )
+    out.push(`  ${DECIDED_NOTE}.`)
     const allowRules = options?.allowRules ?? null
     if (allowRules === null) {
       out.push('  The allow rules in force right now could not be read, so which ones would do that is not known here.')

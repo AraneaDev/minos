@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { projectDirFor, sessionFiles, subagentFiles } from '../paths'
+import { projectFor, subagentFiles } from '../paths'
 import { renderReport } from '../report'
 import { analyseSession } from '../session'
 import { readAllowRules } from '../settings'
@@ -31,10 +31,9 @@ export type SessionLookup =
  * chosen transcript rather than looked up separately.
  */
 export async function resolveSession(options: { cwd: string; session: string | null }): Promise<SessionLookup> {
-  const dir = await projectDirFor(options.cwd)
-  if (dir === null) return { kind: 'no-project' }
-  const files = await sessionFiles(dir)
-  if (files.length === 0) return { kind: 'no-project' }
+  const project = await projectFor(options.cwd)
+  if (project === null || project.files.length === 0) return { kind: 'no-project' }
+  const { dir, files } = project
   const transcript = options.session === null
     ? files.at(-1)
     : files.find((f) => f.includes(options.session as string))
