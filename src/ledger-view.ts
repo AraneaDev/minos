@@ -1,4 +1,4 @@
-import { DECIDED_NOTE } from './caveats'
+import { CHANGES_NOTE, DECIDED_NOTE } from './caveats'
 import { clock, localStamp } from './clock'
 import { failedNote, pathCol, plural, promptRef, sanitise, sessionOrigin } from './report'
 import type { UndoneKind } from './reverts'
@@ -31,7 +31,7 @@ export interface LedgerView {
   /** What every `+Nd` suffix counts from: the first prompt, as `minos report` counts it. */
   origin: string
   startedAt: string | null
-  /** Files per class and undone in changes, as `minos sessions` counts them. */
+  /** Changes per class and undone, as `minos sessions` counts them. */
   counts: { decided: number; auto: number; subagent: number; undone: number }
   /** Auto and subagent files, most recent change first. */
   unaskedFiles: LedgerFile[]
@@ -62,8 +62,12 @@ const when = (iso: string): number => Date.parse(iso) || 0
  * latest such operation.
  */
 export function buildLedgerView(report: SessionReport): LedgerView {
+  // Once per tool_use id, as the headline counts them, so a record a
+  // transcript holds twice cannot make a file or a prompt count it twice.
+  const ids = new Set<string>()
+  const operations = report.operations.filter((o) => !ids.has(o.toolUseId) && ids.add(o.toolUseId))
   const byFile = new Map<string, LedgerFile>()
-  for (const o of report.operations) {
+  for (const o of operations) {
     if (o.attestation === 'decided') continue
     const seen = byFile.get(o.file)
     const newer = seen === undefined || when(o.at) >= when(seen.lastAt)
@@ -82,9 +86,9 @@ export function buildLedgerView(report: SessionReport): LedgerView {
     origin: sessionOrigin(report),
     startedAt: report.startedAt,
     counts: {
-      decided: report.totals.decided.files,
-      auto: report.totals.auto.files,
-      subagent: report.totals.subagent.files,
+      decided: report.totals.decided.changes,
+      auto: report.totals.auto.changes,
+      subagent: report.totals.subagent.changes,
       undone: report.undone.length,
     },
     unaskedFiles: [...byFile.values()].sort((a, b) => when(b.lastAt) - when(a.lastAt)),
@@ -102,7 +106,7 @@ export function buildLedgerView(report: SessionReport): LedgerView {
     decidedNote: DECIDED_NOTE,
     prompts: report.byPrompt
       .map((p) => {
-        const ops = report.operations.filter((o) => o.promptId === p.prompt.id)
+        const ops = operations.filter((o) => o.promptId === p.prompt.id)
         return {
           index: p.prompt.index,
           text: p.prompt.text.split('\n').find((l) => l.trim() !== '') ?? '',
@@ -133,8 +137,6 @@ const LEGEND = [
   'undone    made and then ended later in the same session',
 ]
 
-/** The units line under the counts. */
-const UNITS = '(decided, auto and subagent count files; undone counts changes)'
 
 /**
  * Every word, number and time a display of the ledger shows, already written
@@ -168,7 +170,7 @@ export function ledgerDisplay(view: LedgerView): LedgerDisplay {
     session: sanitise(view.sessionId).slice(0, 8),
     since: view.origin === '' ? null : localStamp(view.origin),
     counts: c,
-    units: UNITS,
+    units: CHANGES_NOTE,
     files: view.unaskedFiles.map((f) => ({
       file: f.file,
       shown: sanitise(shown(f.file, view.cwd)),

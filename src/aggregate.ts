@@ -68,6 +68,10 @@ export interface Aggregate {
   unreadableSkipped: number
   /** Project directories with no transcript left. */
   emptyProjectDirs: number
+  /** Projects left out because every cwd they recorded is under the temp directory; 0 with `--include-temp`. */
+  tempSkipped: number
+  /** Projects left out because every cwd they recorded matches an `--exclude` glob. */
+  excludedSkipped: number
   /** The earliest startedAt over every session seen, window or not. */
   oldestTranscript: string | null
   /** The latest endedAt over every session seen, window or not. */
@@ -223,6 +227,7 @@ export function aggregate(
   window: Window,
   emptyProjectDirs: number,
   unreadableSkipped = 0,
+  skipped: { temp: number; excluded: number } = { temp: 0, excluded: 0 },
 ): Aggregate {
   const total = new Tally(window)
   const projects: ProjectAggregate[] = []
@@ -256,6 +261,8 @@ export function aggregate(
     failedDropped: total.failed,
     unreadableSkipped,
     emptyProjectDirs,
+    tempSkipped: skipped.temp,
+    excludedSkipped: skipped.excluded,
     oldestTranscript: oldest,
     newestTranscript: newest,
   }

@@ -1,10 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="481" height="184" viewBox="0 0 481 184" font-family="ui-monospace, SFMono-Regular, &#34;SF Mono&#34;, Menlo, Consolas, &#34;DejaVu Sans Mono&#34;, monospace" font-size="14">
-  <rect width="481" height="184" rx="8" fill="#10151d"/>
-  <line x1="26" y1="52" x2="455" y2="52" stroke="#26303d" stroke-width="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="226" viewBox="0 0 850 226" font-family="ui-monospace, SFMono-Regular, &#34;SF Mono&#34;, Menlo, Consolas, &#34;DejaVu Sans Mono&#34;, monospace" font-size="14">
+  <rect width="850" height="226" rx="8" fill="#10151d"/>
+  <line x1="26" y1="52" x2="824" y2="52" stroke="#26303d" stroke-width="1"/>
   <text x="26" y="42" xml:space="preserve"><tspan fill="#63707f">$ </tspan><tspan fill="#ece5d5">minos sessions --limit 5</tspan></text>
   <text x="26" y="63" xml:space="preserve"></text>
-  <text x="26" y="84" xml:space="preserve"><tspan fill="#b8c0cb">2576036f  </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 6  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb"> 54  </tspan><tspan fill="#cf6a63">undone 28</tspan></text>
-  <text x="26" y="105" xml:space="preserve"><tspan fill="#b8c0cb">67305eba  </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 6  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#cf6a63">undone 0</tspan></text>
-  <text x="26" y="126" xml:space="preserve"><tspan fill="#b8c0cb">3563e7c5  </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#cf6a63">undone 0</tspan></text>
-  <text x="26" y="147" xml:space="preserve"><tspan fill="#b8c0cb">a836619c  </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 2  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb"> 0  </tspan><tspan fill="#cf6a63">undone 2</tspan></text>
+  <text x="26" y="84" xml:space="preserve"><tspan fill="#b8c0cb">counts are changes: one Edit, Write or NotebookEdit tool call each, deduplicated by tool_use id</tspan></text>
+  <text x="26" y="105" xml:space="preserve"><tspan fill="#b8c0cb">session   first             last              </tspan><tspan fill="#7fb3a3">decided</tspan><tspan fill="#b8c0cb">  </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb">  </tspan><tspan fill="#9a8fd0">subagent</tspan><tspan fill="#b8c0cb">  undone</tspan></text>
+  <text x="26" y="126" xml:space="preserve"><tspan fill="#b8c0cb">eea37000  2026-10-23 </tspan><tspan fill="#63707f">11:18</tspan><tspan fill="#b8c0cb">  2026-10-23 </tspan><tspan fill="#63707f">23:42</tspan><tspan fill="#b8c0cb">        0    61         4       1</tspan></text>
+  <text x="26" y="147" xml:space="preserve"><tspan fill="#b8c0cb">72a8ccb2  2026-10-23 </tspan><tspan fill="#63707f">23:52</tspan><tspan fill="#b8c0cb">  2026-10-24 </tspan><tspan fill="#63707f">00:00</tspan><tspan fill="#b8c0cb">        0     0         0       0</tspan></text>
+  <text x="26" y="168" xml:space="preserve"><tspan fill="#b8c0cb">total                                               0    61         4       1</tspan></text>
+  <text x="26" y="189" xml:space="preserve"><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> by mode: </tspan><tspan fill="#d8a13f">auto</tspan><tspan fill="#b8c0cb"> 59, acceptEdits 2</tspan></text>
 </svg>

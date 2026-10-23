@@ -70,11 +70,11 @@ the CLI and `/minos:report` work as before.
 `/minos:report`, or `minos report` on the command line, prints the whole account of a session,
 including one that ended weeks ago:
 
-![The minos report for the session that built Minos: 57 files changed, none of them decided, 54 of
-them applied inside a subagent, and 28 changes that did not survive the
+![The minos report for a staged demo session: 2 files and 8 changes, none of them decided, 6
+applied without asking and 2 inside a subagent, and 3 changes that did not survive the
 session](docs/images/report.svg)
 
-Minos reporting on the session that built it. Times are in the timezone Minos runs in rather than
+Minos reporting on a staged demo session. Times are in the timezone Minos runs in rather than
 the transcript's UTC, and a `+1d` marks a time that falls on the calendar day after the session
 began.
 
@@ -121,9 +121,10 @@ was done and then undone before you ever saw it.
 | `subagent` | Applied inside a subagent. No diff reached your terminal in any form |
 
 `subagent` wins over the other two, because even in `default` mode a subagent's edits are not
-rendered to you. No change is counted twice. A file changed under more than one class is counted
-under each, so those three file counts overlap on purpose, and the report repeats that where it
-prints them.
+rendered to you. Every view counts the classes in changes: one `Edit`, `Write` or `NotebookEdit`
+call each, counted once by its tool_use id. Each change has exactly one class, so the three counts
+add up to the total, and `report`, `sessions`, `sessions --all`, `export` and `ledger` give the
+same numbers for the same sessions. Where a view counts files, the column or line says `files`.
 
 What Minos can see at all is what the transcript holds, which is the `Edit`, `Write` and
 `NotebookEdit` tools. A file rewritten by a shell command, by `MultiEdit` or by an MCP server of
@@ -176,26 +177,36 @@ minos undoes        which earlier changes one Edit or Write ends, read as JSON o
 `--project <path>`.
 `sessions` takes `--project` and `--limit <n>`. `sessions` and `export` also take `--since
 YYYY-MM-DD` and `--until YYYY-MM-DD`, which bound the listing to local calendar days, both
-inclusive. Any other command rejects them. `--all` takes the same two flags.
+inclusive. Any other command rejects them. `--all` takes the same two flags, and also
+`--exclude <glob>`, which you can repeat, and `--include-temp`.
 
 The report is coloured when stdout is a terminal, on the same scheme the cards above use: one
 colour per class, one for the undone kinds, and grey for the caveats. A pipe, a redirect,
 `minos export` and any environment with `NO_COLOR` set get plain text, so what a script reads is
 what the tool means.
 
-![minos sessions: the four sessions of this repository with their decided, auto, subagent and
-undone counts](docs/images/sessions.svg)
+![minos sessions: two sessions of this repository with their decided, auto, subagent and undone
+changes, their total, and auto broken down by permission mode](docs/images/sessions.svg)
 
 `minos sessions` gives you the headline counts per session, so you can pick the one you mean before
-asking for the full report. It prints a header and a units line first: decided, auto and subagent
-count files, and undone counts changes. Each session shows its first and last local time. If the
+asking for the full report. It prints a units line and a header first, and every count is changes.
+Each session shows its first and last local time. Under the rows come a total and the auto changes
+per permission mode. The total counts each change once, so a change that a resumed or forked
+session copied from its parent counts in both rows but once in the total, and a line says how many
+there were. When the listing reads every transcript of the project, that total is the project's
+row in `sessions --all`. When `--limit` leaves older transcripts unread, the total does not cover
+them, so the two can differ, and a line says how many were left unread. If the
 project moved on disk, the first line reads `recorded under N paths:` followed by the paths, and
 the sessions under all of them are listed together. A project is found when any of its transcripts
 records the directory, so a moved repository is not reported as having no transcript.
 
 `minos sessions --all` and `minos export --all` cover every project under `~/.claude/projects`.
-Here the counts are changes, meaning one Edit, Write or NotebookEdit call each, deduplicated by
-tool_use id so a forked or resumed session does not count the same call twice. Auto is broken down
+They count changes the same way, so a forked or resumed session does not count the same call twice.
+A project whose every recorded directory is under the temp directory (the system one, and `/tmp`)
+is left out by default, since that is where test runs and agent scratchpads live, and a line counts
+the projects skipped. `--include-temp` lists them. `--exclude <glob>` leaves out a project whose
+every recorded directory matches the glob, and a line counts those too. A long project path is cut
+in the middle, so the row keeps both where it lives and which checkout it is. Auto is broken down
 per recorded permission mode, and a line says how many duplicates were dropped. A history line gives
 the oldest and newest transcript, and the project directories that have no transcripts left. Claude
 Code prunes old transcripts (`cleanupPeriodDays`), so `--all` only covers what has not been pruned

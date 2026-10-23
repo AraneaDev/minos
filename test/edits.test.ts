@@ -13,7 +13,7 @@ function op(id: string, over: Partial<Operation> = {}): Operation {
 const report = (operations: Operation[]): SessionReport => ({
   sessionId: 's', cwd: '/r', branch: 'main',
   prompts: [{ id: 'p1', index: 1, uuid: 'x', text: 'go', at: '2026-10-23T18:50:00Z', permissionMode: 'acceptEdits' }],
-  totals: { decided: { files: 0, added: 0, removed: 0 }, auto: { files: 0, added: 0, removed: 0 }, subagent: { files: 0, added: 0, removed: 0 } },
+  totals: { decided: { files: 0, changes: 0, added: 0, removed: 0 }, auto: { files: 0, changes: 0, added: 0, removed: 0 }, subagent: { files: 0, changes: 0, added: 0, removed: 0 } },
   undone: [], unrecognisedModes: [], skippedLines: 0, startedAt: null, endedAt: null, byPrompt: [], largestAuto: [],
   filesTouched: 0, unattributedCount: 0, operations, shellWrites: [], undatedDropped: 0, undatedShellWrites: 0, failedChanges: [],
 })

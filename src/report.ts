@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { DECIDED_NOTE } from './caveats'
+import { CHANGES_NOTE, DECIDED_NOTE } from './caveats'
 import { CLOCK_WIDTH, clock, localDate } from './clock'
 import type { SessionReport } from './session'
 import type { Prompt } from './types'
@@ -25,12 +25,34 @@ const ELLIPSIS = '…'
  * guaranteed separator space. A real repository path routinely runs past a
  * column's padding width; `pad` alone leaves nothing between it and whatever
  * prints next, so the two run together with no space at all. A path longer
- * than `width` is truncated from the front, with a leading ellipsis, because
- * the tail of a path (the file itself) identifies it better than the leading
- * directories do.
+ * than `width` is cut in the middle by `middlePath`, keeping its first
+ * segments and the file itself.
  */
-export const pathCol = (text: string, width: number): string =>
-  text.length <= width ? `${pad(text, width)} ` : `${ELLIPSIS}${text.slice(-(width - 1))} `
+export const pathCol = (text: string, width: number): string => `${pad(middlePath(text, width), width)} `
+
+/**
+ * A path cut in the middle to fit `width`: up to its first two segments, an
+ * ellipsis, then as many of its last segments as still fit. A project path
+ * names the project near its start and the checkout near its end, so cutting
+ * either end loses the part that tells two rows apart. A path whose first
+ * segment and last segment together do not fit is cut from the front.
+ */
+export function middlePath(text: string, width: number): string {
+  if (text.length <= width) return text
+  const parts = text.split('/')
+  const lead = parts[0] === '' ? 1 : 0
+  for (const heads of [2, 1]) {
+    const head = parts.slice(0, lead + heads).join('/')
+    let tail = ''
+    for (let i = parts.length - 1; i >= lead + heads; i--) {
+      const next = tail === '' ? (parts[i] as string) : `${parts[i]}/${tail}`
+      if (`${head}/${ELLIPSIS}/${next}`.length > width) break
+      tail = next
+    }
+    if (tail !== '') return `${head}/${ELLIPSIS}/${tail}`
+  }
+  return `${ELLIPSIS}${text.slice(-(width - 1))}`
+}
 
 /** A count with its word in the right number, e.g. "1 file" against "3 files". */
 export const plural = (n: number, singular: string, pluralWord: string): string => `${n} ${n === 1 ? singular : pluralWord}`
@@ -135,8 +157,9 @@ export function renderReport(report: SessionReport, options?: RenderOptions): st
 
   const added = report.totals.decided.added + report.totals.auto.added + report.totals.subagent.added
   const removed = report.totals.decided.removed + report.totals.auto.removed + report.totals.subagent.removed
-  out.push(`CHANGED  ${plural(report.filesTouched, 'file', 'files')}, +${added} / -${removed}`)
-  out.push('  (a file changed under more than one label below is counted in each; the rows overlap by design)')
+  const changes = report.totals.decided.changes + report.totals.auto.changes + report.totals.subagent.changes
+  out.push(`CHANGED  ${plural(report.filesTouched, 'file', 'files')}, ${plural(changes, 'change', 'changes')}, +${added} / -${removed}`)
+  out.push(`  (${CHANGES_NOTE}; each change has one label below)`)
   out.push('  (+/- are not diff lines: an Edit counts its whole old and new strings, a Write counts its whole content with 0 removed)')
   out.push('')
 
@@ -146,12 +169,12 @@ export function renderReport(report: SessionReport, options?: RenderOptions): st
     subagent: 'applied inside a subagent, never rendered',
   } as const
   const labels = ['decided', 'auto', 'subagent'] as const
-  const fileWidth = digits(labels.map((l) => report.totals[l].files), 3)
+  const changeWidth = digits(labels.map((l) => report.totals[l].changes), 3)
   const addedWidth = digits(labels.map((l) => report.totals[l].added), 4)
   const removedWidth = digits(labels.map((l) => report.totals[l].removed), 4)
   for (const label of labels) {
     const t = report.totals[label]
-    const counts = `${num(t.files, fileWidth)} ${filesWord(t.files)}`
+    const counts = `${num(t.changes, changeWidth)} ${t.changes === 1 ? 'change ' : 'changes'}`
     out.push(`  ${pad(label, 12)}${counts}  +${num(t.added, addedWidth)}  -${num(t.removed, removedWidth)}   ${legend[label]}`)
   }
   out.push('')

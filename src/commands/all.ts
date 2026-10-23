@@ -1,10 +1,11 @@
 import { readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { aggregate } from '../aggregate'
 import { DECIDED_NOTE } from '../caveats'
 import type { Aggregate, ClassCounts, ProjectAggregate } from '../aggregate'
 import { localDate } from '../clock'
-import { pathCol, plural, sanitise } from '../report'
+import { middlePath, plural, sanitise } from '../report'
 import { claudeHome, sessionFiles, subagentFiles } from '../paths'
 import { analyseSession } from '../session'
 import type { SessionReport } from '../session'
@@ -43,6 +44,36 @@ function newestFirst(reports: SessionReport[]): string[] {
   return cwds
 }
 
+/** Which projects `--all` leaves out: those matching an `--exclude` glob, and those that only ever ran in the temp directory. */
+export interface ProjectFilter {
+  exclude: string[]
+  includeTemp: boolean
+}
+
+const DEFAULT_FILTER: ProjectFilter = { exclude: [], includeTemp: false }
+
+/** The system temp directory and `/tmp`, which Minos's own test runs and agent scratchpads use. */
+function tempRoots(): string[] {
+  return [...new Set([tmpdir(), '/tmp'].map((d) => d.replace(/\/+$/, '') || '/'))]
+}
+
+const under = (path: string, root: string): boolean => path === root || path.startsWith(root === '/' ? '/' : `${root}/`)
+
+/**
+ * Why a project is left out, or null to keep it. Both rules need every
+ * recorded cwd to match, so a project that only once ran from a scratch
+ * directory keeps its row; a project with no recorded cwd is always kept,
+ * since nothing says where it ran.
+ */
+function skipReason(cwds: string[], filter: ProjectFilter): 'excluded' | 'temp' | null {
+  if (cwds.length === 0) return null
+  const globs = filter.exclude.map((g) => new Bun.Glob(g))
+  if (globs.length > 0 && cwds.every((c) => globs.some((g) => g.match(c)))) return 'excluded'
+  const roots = tempRoots()
+  if (!filter.includeTemp && cwds.every((c) => roots.some((r) => under(c, r)))) return 'temp'
+  return null
+}
+
 /**
  * Every project under `claudeHome()/projects`, counted inside the window.
  *
@@ -52,9 +83,11 @@ function newestFirst(reports: SessionReport[]): string[] {
  * transcripts and the count says how much history is gone. Projects are read
  * in name order, which fixes which copy of a forked change counts as the
  * first. A missing store yields an aggregate with no projects rather than
- * throwing.
+ * throwing. Projects the filter leaves out are read, since their cwds are
+ * only known from their transcripts, then counted apart and kept out of
+ * every row and the total.
  */
-export async function collectAll(window: Window): Promise<Aggregate> {
+export async function collectAll(window: Window, filter: ProjectFilter = DEFAULT_FILTER): Promise<Aggregate> {
   const root = join(claudeHome(), 'projects')
   const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
   const dirs = entries.filter((e) => e.isDirectory()).map((e) => join(root, e.name)).sort()
@@ -74,7 +107,13 @@ export async function collectAll(window: Window): Promise<Aggregate> {
     return { dir, cwds: newestFirst(reports), reports }
   })
   const projects = read.filter((p) => p !== null)
-  return aggregate(projects, window, read.length - projects.length, unreadable)
+  const skipped = { temp: 0, excluded: 0 }
+  const kept = projects.filter((p) => {
+    const reason = skipReason(p.cwds, filter)
+    if (reason !== null) skipped[reason]++
+    return reason === null
+  })
+  return aggregate(kept, window, read.length - projects.length, unreadable, skipped)
 }
 
 /** The widest the project column gets, so one long scratch path cannot widen the whole table. */
@@ -82,14 +121,14 @@ const PROJECT_WIDTH = 48
 
 /**
  * A project's name in the table: the path it was last used at, and how many
- * older ones it had. The path is cut from the front to keep the whole label
+ * older ones it had. The path is cut in the middle to keep the whole label
  * within `PROJECT_WIDTH`, so the suffix about older paths always survives.
  */
 function label(p: ProjectAggregate): string {
   const newest = sanitise(p.cwds[0] ?? basename(p.dir))
   const older = p.cwds.length - 1
   const suffix = older > 0 ? ` (+${plural(older, 'older path', 'older paths')})` : ''
-  return `${pathCol(newest, PROJECT_WIDTH - suffix.length).trimEnd()}${suffix}`
+  return `${middlePath(newest, PROJECT_WIDTH - suffix.length)}${suffix}`
 }
 
 const COLUMNS = ['sessions', 'decided', 'auto', 'subagent', 'undone'] as const
@@ -153,6 +192,10 @@ export function renderAll(a: Aggregate): string {
     out.push(`left out ${plural(a.failedDropped, 'change', 'changes')} whose tool call failed or was refused, so nothing was written`)
   }
   if (a.total.changes.decided > 0) out.push(DECIDED_NOTE)
+  if (a.tempSkipped > 0) {
+    out.push(`skipped ${plural(a.tempSkipped, 'project', 'projects')} that only ran under the temp directory (--include-temp lists them)`)
+  }
+  if (a.excludedSkipped > 0) out.push(`excluded ${plural(a.excludedSkipped, 'project', 'projects')} matching --exclude`)
   if (a.unreadableSkipped > 0) out.push(`skipped ${plural(a.unreadableSkipped, 'unreadable transcript', 'unreadable transcripts')}`)
   out.push(
     `history: oldest transcript ${day(a.oldestTranscript)}, newest ${day(a.newestTranscript)}; ` +
@@ -162,7 +205,7 @@ export function renderAll(a: Aggregate): string {
 }
 
 /** `minos sessions --all`: the rendered table, or null when the store holds no transcript at all. */
-export async function runAll(window: Window): Promise<string | null> {
-  const all = await collectAll(window)
-  return all.projects.length === 0 ? null : renderAll(all)
+export async function runAll(window: Window, filter?: ProjectFilter): Promise<string | null> {
+  const all = await collectAll(window, filter)
+  return all.projects.length === 0 && all.tempSkipped + all.excludedSkipped === 0 ? null : renderAll(all)
 }

@@ -326,6 +326,23 @@ test('--all refuses a limit rather than silently ignoring it', async () => {
   expect(error).toBe('minos: --all lists every project, so it takes no --limit')
 })
 
+for (const argv of [
+  ['sessions', '--exclude', '/tmp/**'],
+  ['sessions', '--include-temp'],
+]) {
+  test(`--exclude and --include-temp are refused without --all: ${argv.join(' ')}`, async () => {
+    const { code, error } = await capture(argv)
+    expect(code).toBe(2)
+    expect(error).toBe('minos: --exclude and --include-temp work with --all')
+  })
+}
+
+test('--exclude without a glob is refused', async () => {
+  const { code, error } = await capture(['sessions', '--all', '--exclude', '/a/*', '--exclude'])
+  expect(code).toBe(2)
+  expect(error).toBe('minos: --exclude needs a glob')
+})
+
 test('--all works only with sessions and export', async () => {
   const { code, error } = await capture(['report', '--all'])
   expect(code).toBe(2)

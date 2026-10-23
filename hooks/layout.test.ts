@@ -8,7 +8,7 @@ const LEDGER: MinosLedger = {
   session: 'ab263592',
   since: '2026-10-23 21:31',
   counts: { decided: 0, auto: 12, subagent: 3, undone: 2 },
-  units: '(decided, auto and subagent count files; undone counts changes)',
+  units: 'counts are changes: one Edit, Write or NotebookEdit tool call each, deduplicated by tool_use id',
   files: [
     { file: '/repo/src/a.ts', shown: 'src/a.ts', label: 'auto', changes: '3 changes' },
     { file: '/repo/content/en/blog/a-very-long-directory-name/judging-an-ai-safety-sprint.md', shown: 'content/en/blog/a-very-long-directory-name/judging-an-ai-safety-sprint.md', label: 'subagent', changes: '1 change' },
