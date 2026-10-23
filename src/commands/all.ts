@@ -1,8 +1,10 @@
 import { readdir } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import { aggregate, DECIDED_NOTE } from '../aggregate'
+import { aggregate } from '../aggregate'
+import { DECIDED_NOTE } from '../caveats'
 import type { Aggregate, ClassCounts, ProjectAggregate } from '../aggregate'
 import { localDate } from '../clock'
+import { pathCol, sanitise } from '../report'
 import { claudeHome, sessionFiles, subagentFiles } from '../paths'
 import { analyseSession } from '../session'
 import type { SessionReport } from '../session'
@@ -77,11 +79,19 @@ export async function collectAll(window: Window): Promise<Aggregate> {
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
-/** A project's name in the table: the path it was last used at, and how many older ones it had. */
+/** The widest the project column gets, so one long scratch path cannot widen the whole table. */
+const PROJECT_WIDTH = 48
+
+/**
+ * A project's name in the table: the path it was last used at, and how many
+ * older ones it had. The path is cut from the front to keep the whole label
+ * within `PROJECT_WIDTH`, so the suffix about older paths always survives.
+ */
 function label(p: ProjectAggregate): string {
-  const newest = p.cwds[0] ?? basename(p.dir)
+  const newest = sanitise(p.cwds[0] ?? basename(p.dir))
   const older = p.cwds.length - 1
-  return older > 0 ? `${newest} (+${plural(older, 'older path', 'older paths')})` : newest
+  const suffix = older > 0 ? ` (+${plural(older, 'older path', 'older paths')})` : ''
+  return `${pathCol(newest, PROJECT_WIDTH - suffix.length).trimEnd()}${suffix}`
 }
 
 const COLUMNS = ['sessions', 'decided', 'auto', 'subagent', 'undone'] as const
@@ -99,10 +109,14 @@ function rowsExceedTotal(a: Aggregate): boolean {
  * that say what the numbers count, what they leave out, and how much history
  * there was to count from. An open `since` reads `start of history`, and an
  * open `until` reads as today's local date, so the stated window is always a
- * pair of dates or says plainly that it has no start.
+ * pair of dates or says plainly that it has no start. A project with no
+ * session in the window gets no row, only a count in one line under the
+ * table; the total and the JSON still cover every project.
  */
 export function renderAll(a: Aggregate): string {
-  const rows = [...a.projects.map((p) => [label(p), ...cells(p).map(String)]), ['total', ...cells(a.total).map(String)]]
+  const shown = a.projects.filter((p) => p.sessions > 0)
+  const idle = a.projects.length - shown.length
+  const rows = [...shown.map((p) => [label(p), ...cells(p).map(String)]), ['total', ...cells(a.total).map(String)]]
   const header = ['project', ...COLUMNS]
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] as string).length)))
   const line = (r: string[]): string => r.map((c, i) => (i === 0 ? c.padEnd(widths[0] as number) : c.padStart(widths[i] as number))).join('  ')
@@ -121,6 +135,12 @@ export function renderAll(a: Aggregate): string {
     `shell commands matching a write pattern (a loose heuristic, not counted above: it misses some writes, and many matches write outside the repository): decided ${w.decided}, auto ${w.auto}, subagent ${w.subagent}`,
     `dropped ${plural(a.duplicatesDropped, 'duplicate change', 'duplicate changes')} copied between forked or resumed sessions`,
   ]
+  if (a.total.undatedShellWrites > 0) {
+    out.push(
+      `left out ${plural(a.total.undatedShellWrites, 'shell command', 'shell commands')} matching a write pattern with no readable timestamp, which no window can place`,
+    )
+  }
+  if (idle > 0) out.push(`${plural(idle, 'project', 'projects')} had no session in the window`)
   if (rowsExceedTotal(a)) out.push('a change copied into another project counts in both rows and once in the total')
   if (a.undatedDropped > 0) {
     out.push(`left out ${plural(a.undatedDropped, 'change', 'changes')} with no readable timestamp, which no window can place`)

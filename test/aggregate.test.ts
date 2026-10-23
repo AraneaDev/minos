@@ -43,6 +43,7 @@ function report(operations: Operation[], over: Partial<SessionReport> = {}): Ses
     operations,
     shellWrites: [],
     undatedDropped: 0,
+    undatedShellWrites: 0,
     ...over,
   }
 }
@@ -189,4 +190,42 @@ test('counts a session whose span straddles a narrow window with no change insid
 test('does not count a session with no known start or end and no change in the window', () => {
   const r = report([], { startedAt: null, endedAt: null })
   expect(one([r], { since: '2026-09-22', until: null }).total.sessions).toBe(0)
+})
+
+test('counts undated shell writes apart under a window, per project and in the total, and none without one', () => {
+  const w = (id: string, at: string) => ({ toolUseId: id, at, attestation: 'auto' as Attestation })
+  const r = report([], { startedAt: '2026-09-22T10:00:00Z', shellWrites: [w('s1', ''), w('s2', 'garbage'), w('s3', '2026-09-22T10:00:00Z')] })
+  const fork = report([], { startedAt: '2026-09-22T10:00:00Z', shellWrites: [w('s1', '')] })
+  const windowed = one([r, fork], { since: '2026-09-22', until: null })
+  expect(windowed.total.possiblyUnseenWrites.auto).toBe(1)
+  expect(windowed.total.undatedShellWrites).toBe(2)
+  expect(windowed.projects[0]!.undatedShellWrites).toBe(2)
+  const open = one([r])
+  expect(open.total.possiblyUnseenWrites.auto).toBe(3)
+  expect(open.total.undatedShellWrites).toBe(0)
+})
+
+test('an undone change copied into two projects counts in each row and once in the total', () => {
+  const intro = op('t1', { attestation: 'auto' })
+  const undoneBy = op('t2', { attestation: 'auto' })
+  const finding = { file: '/r/a.ts', kind: 'reverted' as const, line: null, introduced: intro, undoneBy }
+  const a = aggregate(
+    [
+      { dir: 'a', cwds: ['/a'], reports: [report([intro, undoneBy], { undone: [finding] })] },
+      { dir: 'b', cwds: ['/b'], reports: [report([intro, undoneBy], { undone: [finding] })] },
+    ],
+    NO_WINDOW,
+    0,
+  )
+  expect(a.projects.map((p) => p.changes.undone)).toEqual([1, 1])
+  expect(a.total.changes.undone).toBe(1)
+})
+
+test('an undone change with no readable timestamp is not counted under a window', () => {
+  const intro = op('t1', { attestation: 'auto', at: '' })
+  const undoneBy = op('t2', { attestation: 'auto' })
+  const finding = { file: '/r/a.ts', kind: 'reverted' as const, line: null, introduced: intro, undoneBy }
+  const r = report([intro, undoneBy], { undone: [finding], startedAt: '2026-09-22T10:00:00Z' })
+  expect(one([r], { since: '2026-09-01', until: null }).total.changes.undone).toBe(0)
+  expect(one([r]).total.changes.undone).toBe(1)
 })

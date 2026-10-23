@@ -1,4 +1,5 @@
 import { basename } from 'node:path'
+import { DECIDED_NOTE } from './caveats'
 import { CLOCK_WIDTH, clock, localDate } from './clock'
 import type { SessionReport } from './session'
 import type { Prompt } from './types'
@@ -210,9 +211,7 @@ export function renderReport(report: SessionReport, options?: RenderOptions): st
   // settings at report time, never the settings that were in force when the
   // session ran, since only the former is ever recoverable.
   if (report.totals.decided.files > 0) {
-    out.push(
-      '  decided is inferred from permission mode alone, not from a recorded approval; a standing allow rule can mean nothing was ever put on screen.',
-    )
+    out.push(`  ${DECIDED_NOTE}.`)
     const allowRules = options?.allowRules ?? null
     if (allowRules === null) {
       out.push('  The allow rules in force right now could not be read, so which ones would do that is not known here.')

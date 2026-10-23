@@ -78,6 +78,8 @@ export interface SessionReport {
   shellWrites: ShellWrite[]
   /** Operations left out because their timestamp does not parse and a window is set; 0 with no window. */
   undatedDropped: number
+  /** Shell writes left out of `shellWrites` for the same reason; 0 with no window. */
+  undatedShellWrites: number
 }
 
 const lines = (text: string | null): number => {
@@ -193,7 +195,8 @@ export async function analyseSession(
     undoneByPrompt.set(id, (undoneByPrompt.get(id) ?? 0) + 1)
   }
 
-  const operations = ledger.operations().filter(inside)
+  const everyOperation = ledger.operations()
+  const operations = everyOperation.filter(inside)
   const byPrompt: PromptTotals[] = prompts.all().map((prompt) => {
     const ops = operations.filter((o) => o.promptId === prompt.id)
     const files = new Set(ops.map((o) => o.file))
@@ -214,6 +217,8 @@ export async function analyseSession(
     .sort((a, b) => b.added + b.removed - (a.added + a.removed))
 
   const unattributedCount = operations.filter((o) => o.promptId === null).length
+  const undated = (at: string): boolean => !inWindow(at, window) && Number.isNaN(new Date(at).getTime())
+  const shellWrites = ledger.shellWrites()
 
   return {
     sessionId,
@@ -231,7 +236,8 @@ export async function analyseSession(
     filesTouched: perFile.size,
     unattributedCount,
     operations,
-    shellWrites: ledger.shellWrites().filter((w) => inWindow(w.at, window)),
-    undatedDropped: ledger.operations().filter((o) => !inside(o) && Number.isNaN(new Date(o.at).getTime())).length,
+    shellWrites: shellWrites.filter((w) => inWindow(w.at, window)),
+    undatedDropped: everyOperation.filter((o) => undated(o.at)).length,
+    undatedShellWrites: shellWrites.filter((w) => undated(w.at)).length,
   }
 }

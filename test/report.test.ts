@@ -312,6 +312,16 @@ test('a caveat names the allow rules in force when decided covers at least one f
   expect(text.toLowerCase()).toContain('right now')
 })
 
+// The literal line, not the shared constant: the caveat moved into
+// src/caveats.ts and the report's rendering of it must not change a byte.
+test('the decided caveat line in the report is unchanged, indent and trailing period included', async () => {
+  const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
+  const lines = renderReport(report, { allowRules: [] }).split('\n')
+  expect(lines).toContain(
+    '  decided is inferred from permission mode alone, not from a recorded approval; a standing allow rule can mean nothing was ever put on screen.',
+  )
+})
+
 test('the caveat still prints, without a rule list, when settings could not be read', async () => {
   const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
   const text = renderReport(report, { allowRules: null })

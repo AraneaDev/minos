@@ -7,6 +7,7 @@
  * up in several transcripts; the first occurrence wins and later ones are
  * only counted as duplicates.
  */
+import { DECIDED_NOTE } from './caveats'
 import type { SessionReport } from './session'
 import type { Operation, ShellWrite } from './types'
 import type { Undone } from './reverts'
@@ -25,10 +26,6 @@ export interface ClassCounts {
 const POSSIBLY_UNSEEN_WRITES_NOTE =
   'shell commands matching a write pattern: a loose heuristic, not counted in changes; it misses some writes, and many matches write outside the repository'
 
-/** What the export says about `decided`, beside the numbers. */
-export const DECIDED_NOTE =
-  'decided is inferred from permission mode alone, not from a recorded approval; a standing allow rule can mean nothing was ever put on screen'
-
 /** One project's counts, or the deduplicated total over all of them. */
 export interface ProjectAggregate {
   dir: string
@@ -40,6 +37,8 @@ export interface ProjectAggregate {
   changes: ClassCounts
   /** Bash calls that look like file writes, deduplicated by tool_use id: a heuristic, never part of `changes`. */
   possiblyUnseenWrites: Omit<ClassCounts, 'undone'>
+  /** Shell writes with no readable timestamp, left out of `possiblyUnseenWrites` because a window is set; 0 with no window. */
+  undatedShellWrites: number
   /** The caveat for `possiblyUnseenWrites`, repeated so the JSON carries it. */
   possiblyUnseenWritesNote: string
   /** The caveat for the `decided` count, repeated so the JSON carries it. */
@@ -99,10 +98,9 @@ class Tally {
   sessions = 0
   firstAt: string | null = null
   lastAt: string | null = null
-  oldest: string | null = null
-  newest: string | null = null
   duplicates = 0
   undated = 0
+  undatedShell = 0
   private readonly seen = new Set<string>()
   private readonly seenShell = new Set<string>()
   private readonly seenUndone = new Set<string>()
@@ -127,11 +125,12 @@ class Tally {
     }
   }
 
-  /** Count one shell write once by tool_use id, when it falls inside the window. */
+  /** Count one shell write once by tool_use id, when it falls inside the window; an undated one is counted apart. */
   addShellWrite(w: ShellWrite): void {
-    if (this.seenShell.has(w.toolUseId) || !inWindow(w.at, this.window)) return
+    if (this.seenShell.has(w.toolUseId)) return
     this.seenShell.add(w.toolUseId)
-    this.shellWrites[w.attestation]++
+    if (inWindow(w.at, this.window)) this.shellWrites[w.attestation]++
+    else if (Number.isNaN(instant(w.at))) this.undatedShell++
   }
 
   /** Count an undone finding by the operation that introduced it, once. */
@@ -151,8 +150,6 @@ class Tally {
     // inside it, but only when at least one end of that span is known.
     const known = report.startedAt !== null || report.endedAt !== null
     const spans = known && spansWindow(report.startedAt, report.endedAt, this.window)
-    this.oldest = earlier(this.oldest, report.startedAt)
-    this.newest = later(this.newest, report.endedAt)
     if (!touched && !spans) return
     this.sessions++
     this.firstAt = earlier(this.firstAt, report.startedAt)
@@ -166,6 +163,7 @@ class Tally {
       sessions: this.sessions,
       changes: this.changes,
       possiblyUnseenWrites: this.shellWrites,
+      undatedShellWrites: this.undatedShell,
       possiblyUnseenWritesNote: POSSIBLY_UNSEEN_WRITES_NOTE,
       decidedNote: DECIDED_NOTE,
       autoModes: this.autoModes,
@@ -195,6 +193,10 @@ export function aggregate(
 ): Aggregate {
   const total = new Tally(window)
   const projects: ProjectAggregate[] = []
+  // The history the store still holds, over every session whether or not
+  // the window counts it; only the total reports it, so no project tracks it.
+  let oldest: string | null = null
+  let newest: string | null = null
   for (const { dir, cwds, reports } of input) {
     const tally = new Tally(window)
     for (const cwd of cwds) {
@@ -204,6 +206,8 @@ export function aggregate(
     for (const report of reports) {
       tally.addSession(report)
       total.addSession(report)
+      oldest = earlier(oldest, report.startedAt)
+      newest = later(newest, report.endedAt)
     }
     projects.push(tally.result(dir, false))
   }
@@ -216,7 +220,7 @@ export function aggregate(
     undatedDropped: total.undated,
     unreadableSkipped,
     emptyProjectDirs,
-    oldestTranscript: total.oldest,
-    newestTranscript: total.newest,
+    oldestTranscript: oldest,
+    newestTranscript: newest,
   }
 }

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { analyseSession } from '../src/session'
 import type { FileTotals, PromptTotals } from '../src/session'
@@ -159,4 +160,90 @@ test('a session reports the span of every timestamp in it, compared as instants'
 
   const withSub = await analyseSession({ transcript: main, subagents: [join(FIXTURE_DIR, 'subagent.jsonl')] })
   expect(withSub.endedAt).toBe('2026-09-07T21:00:00Z')
+})
+
+/** Writes records as one transcript in a fresh temp directory, runs `body` on its path, and cleans up. */
+async function withTranscripts(files: Record<string, object[]>, body: (path: (name: string) => string) => Promise<void>): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), 'minos-session-'))
+  try {
+    for (const [name, records] of Object.entries(files)) await writeFile(join(dir, name), records.map((r) => JSON.stringify(r)).join('\n'))
+    await body((name) => join(dir, name))
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+const userPrompt = (mode: string, timestamp: string) => ({ type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: mode, timestamp, sessionId: 's', cwd: '/repo', message: { content: 'go' } })
+const call = (uuid: string, timestamp: string, name: string, input: object, parentUuid: string | null = 'u1') => ({
+  type: 'assistant',
+  uuid,
+  parentUuid,
+  timestamp,
+  isSidechain: false,
+  message: { content: [{ type: 'tool_use', id: `t-${uuid}`, name, input }] },
+})
+
+test('the span compares instants when string order and instant order disagree across offsets', async () => {
+  // 10:30+02:00 is 08:30Z, earlier than 09:00Z, though it sorts later as a string.
+  await withTranscripts(
+    { 'main.jsonl': [userPrompt('default', '2026-09-07T09:00:00Z'), call('a1', '2026-09-07T10:30:00+02:00', 'Read', {}), call('a2', '2026-09-07T08:45:00Z', 'Read', {})] },
+    async (path) => {
+      const report = await analyseSession({ transcript: path('main.jsonl'), subagents: [] })
+      expect(report.startedAt).toBe('2026-09-07T10:30:00+02:00')
+      expect(report.endedAt).toBe('2026-09-07T09:00:00Z')
+    },
+  )
+})
+
+test('an unparseable timestamp is ignored for the span', async () => {
+  await withTranscripts(
+    { 'main.jsonl': [userPrompt('default', '2026-09-07T09:00:00Z'), call('a1', 'not a time', 'Read', {}), call('a2', '2026-09-07T09:05:00Z', 'Read', {})] },
+    async (path) => {
+      const report = await analyseSession({ transcript: path('main.jsonl'), subagents: [] })
+      expect(report.startedAt).toBe('2026-09-07T09:00:00Z')
+      expect(report.endedAt).toBe('2026-09-07T09:05:00Z')
+    },
+  )
+})
+
+test('a grafted subagent operation carries the permission mode of the prompt behind it, and an orphan none', async () => {
+  const spawn = { type: 'assistant', uuid: 'a1', parentUuid: 'u1', timestamp: '2026-09-07T09:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'task-1', name: 'Task', input: {} }] } }
+  await withTranscripts(
+    {
+      'main.jsonl': [userPrompt('acceptEdits', '2026-09-07T09:00:00Z'), spawn],
+      'agent-1.jsonl': [call('s1', '2026-09-07T09:02:00Z', 'Write', { file_path: '/repo/a.ts', content: 'x' }, null)],
+      'agent-2.jsonl': [call('s2', '2026-09-07T09:03:00Z', 'Write', { file_path: '/repo/b.ts', content: 'y' }, null)],
+    },
+    async (path) => {
+      await writeFile(path('agent-1.meta.json'), JSON.stringify({ toolUseId: 'task-1' }))
+      const report = await analyseSession({ transcript: path('main.jsonl'), subagents: [path('agent-1.jsonl'), path('agent-2.jsonl')] })
+      const byFile = new Map(report.operations.map((o) => [o.file, o]))
+      expect(byFile.get('/repo/a.ts')).toMatchObject({ attestation: 'subagent', permissionMode: 'acceptEdits', promptId: 'p1' })
+      expect(byFile.get('/repo/b.ts')).toMatchObject({ attestation: 'subagent', permissionMode: null, promptId: null })
+    },
+  )
+})
+
+test('shell writes carry decided and subagent labels, and a window keeps only those inside it and counts the undated', async () => {
+  const bash = (uuid: string, timestamp: string) => call(uuid, timestamp, 'Bash', { command: 'rm src/old.ts' })
+  await withTranscripts(
+    {
+      'main.jsonl': [userPrompt('default', '2026-09-07T09:00:00Z'), bash('b1', '2026-09-07T09:01:00Z'), bash('b2', '2026-09-09T09:01:00Z'), bash('b3', 'garbage')],
+      'agent-1.jsonl': [bash('b4', '2026-09-07T09:02:00Z')],
+    },
+    async (path) => {
+      const paths = { transcript: path('main.jsonl'), subagents: [path('agent-1.jsonl')] }
+      const open = await analyseSession(paths)
+      expect(open.shellWrites.map((w) => [w.toolUseId, w.attestation])).toEqual([
+        ['t-b1', 'decided'],
+        ['t-b4', 'subagent'],
+        ['t-b2', 'decided'],
+        ['t-b3', 'decided'],
+      ])
+      expect(open.undatedShellWrites).toBe(0)
+      const windowed = await analyseSession(paths, { window: { since: null, until: '2026-09-08' } })
+      expect(windowed.shellWrites.map((w) => w.toolUseId)).toEqual(['t-b1', 't-b4'])
+      expect(windowed.undatedShellWrites).toBe(1)
+    },
+  )
 })
