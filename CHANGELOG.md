@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.11](https://github.com/AraneaDev/minos/compare/v0.0.10...v0.0.11) (2026-10-23)
+
+
+### Fixes
+
+* **reverts:** count an undone change by the lines it added ([#22](https://github.com/AraneaDev/minos/issues/22)) ([b213658](https://github.com/AraneaDev/minos/commit/b213658f99e0c781a7c1d7c544727927d886984f))
+
 ## [0.0.10](https://github.com/AraneaDev/minos/compare/v0.0.9...v0.0.10) (2026-10-23)
 
 
