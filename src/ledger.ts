@@ -59,6 +59,8 @@ export class Ledger {
         kind,
         at: str(record.timestamp) ?? '',
         uuid,
+        toolUseId: use.id,
+        permissionMode: prompt?.permissionMode ? prompt.permissionMode : null,
         promptId: prompt?.id ?? null,
         attestation: result.label,
         oldString: str(use.input.old_string),

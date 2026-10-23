@@ -150,3 +150,13 @@ test('a trailing newline terminates the last line rather than starting an empty 
   expect(byFile.get('/repo/src/with-newline.txt')).toMatchObject({ added: 2, removed: 0 })
   expect(byFile.get('/repo/src/no-newline.txt')).toMatchObject({ added: 2, removed: 0 })
 })
+
+test('a session reports the span of every timestamp in it, compared as instants', async () => {
+  const main = join(FIXTURE_DIR, 'session.jsonl')
+  const alone = await analyseSession({ transcript: main, subagents: [] })
+  expect(alone.startedAt).toBe('2026-09-07T19:01:00Z')
+  expect(alone.endedAt).toBe('2026-09-07T20:12:00Z')
+
+  const withSub = await analyseSession({ transcript: main, subagents: [join(FIXTURE_DIR, 'subagent.jsonl')] })
+  expect(withSub.endedAt).toBe('2026-09-07T21:00:00Z')
+})

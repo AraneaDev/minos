@@ -232,6 +232,7 @@ test('an operation and a prompt survive a JSON round trip unchanged', () => {
     kind: 'edit',
     at: '2026-09-07T00:00:00.000Z',
     uuid: 'op-uuid-1',
+    toolUseId: 't', permissionMode: null,
     promptId: 'prompt-uuid-1',
     attestation: 'decided',
     oldString: 'before',

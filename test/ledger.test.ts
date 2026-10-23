@@ -64,3 +64,27 @@ test('an unrecognised permission mode is carried out for the report', () => {
   }
   expect(ledger.unrecognisedModes()).toEqual(['somethingNew'])
 })
+
+test('each change carries its tool_use id and the mode its prompt recorded', () => {
+  const orphan = { ...edit, uuid: 'a9', parentUuid: 'nowhere', message: { content: [{ type: 'tool_use', id: 't9', name: 'Edit', input: { file_path: '/src/b.ts', old_string: 'x', new_string: 'y' } }] } }
+  const prompts = new PromptIndex()
+  const ledger = new Ledger()
+  for (const r of [prompt, edit, orphan]) {
+    prompts.observe(r)
+    ledger.observe(r, prompts)
+  }
+  const ops = ledger.operations()
+  expect(ops.find((o) => o.uuid === 'a1')).toMatchObject({ toolUseId: 't1', permissionMode: 'acceptEdits' })
+  expect(ops.find((o) => o.uuid === 'a9')).toMatchObject({ toolUseId: 't9', permissionMode: null })
+})
+
+test('a prompt that recorded an empty mode yields a null permissionMode', () => {
+  const blank = { ...prompt, permissionMode: '' }
+  const prompts = new PromptIndex()
+  const ledger = new Ledger()
+  for (const r of [blank, edit]) {
+    prompts.observe(r)
+    ledger.observe(r, prompts)
+  }
+  expect(ledger.operations()[0]?.permissionMode).toBeNull()
+})

@@ -13,6 +13,10 @@ export interface Operation {
   kind: OperationKind
   at: string
   uuid: string
+  /** The id of the tool_use block that made this change, shared by every copy of a forked session. */
+  toolUseId: string
+  /** The mode the resolved prompt recorded, or null when no prompt resolved or it recorded none. */
+  permissionMode: string | null
   promptId: string | null
   attestation: Attestation
   oldString: string | null

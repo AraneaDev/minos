@@ -206,6 +206,7 @@ test('a long path in the UNDONE section still separates from the kind column', a
     kind: 'edit',
     at: '2026-09-07T20:08:00Z',
     uuid: 'u',
+    toolUseId: 't', permissionMode: null,
     promptId: null,
     attestation: 'auto',
     oldString: null,
@@ -245,6 +246,7 @@ test('an UNDONE row names the prompt behind each side, and (unattributed) when t
     kind: 'edit',
     at: '2026-09-07T20:08:00Z',
     uuid: 'u',
+    toolUseId: 't', permissionMode: null,
     promptId: null,
     attestation: 'auto',
     oldString: null,
@@ -360,7 +362,7 @@ test('the header names the local date the session started', async () => {
 test('an UNDONE row on a later day says how many days later, rather than reading as the same day', async () => {
   const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
   const op = (at: string): Operation => ({
-    file: '/repo/src/slow.ts', kind: 'edit', at, uuid: 'u', promptId: 'p1', attestation: 'auto',
+    file: '/repo/src/slow.ts', kind: 'edit', at, uuid: 'u', toolUseId: 't', permissionMode: null, promptId: 'p1', attestation: 'auto',
     oldString: null, newString: null, replaceAll: false, content: null,
   })
   const text = renderReport({

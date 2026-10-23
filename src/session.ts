@@ -33,6 +33,10 @@ export interface SessionReport {
   undone: Undone[]
   unrecognisedModes: string[]
   skippedLines: number
+  /** The earliest timestamp of any record in the transcript or its subagent files, as written; null when none parses. */
+  startedAt: string | null
+  /** The latest such timestamp, as written. */
+  endedAt: string | null
   byPrompt: PromptTotals[]
   /**
    * The files with the most change applied without asking, ranked by lines
@@ -100,8 +104,17 @@ export async function analyseSession(paths: { transcript: string; subagents: str
   }
 
   let skippedLines = 0
+  const bounds: { first: { at: number; iso: string } | null; last: { at: number; iso: string } | null } = { first: null, last: null }
+  const span = (r: UnknownRecord): void => {
+    if (typeof r.timestamp !== 'string') return
+    const at = Date.parse(r.timestamp)
+    if (Number.isNaN(at)) return
+    if (bounds.first === null || at < bounds.first.at) bounds.first = { at, iso: r.timestamp }
+    if (bounds.last === null || at > bounds.last.at) bounds.last = { at, iso: r.timestamp }
+  }
   const first = await eachRecord(paths.transcript, (r) => {
     header(r)
+    span(r)
     prompts.observe(r)
   })
   skippedLines += first.skipped
@@ -124,6 +137,7 @@ export async function analyseSession(paths: { transcript: string; subagents: str
       // isSidechain is forced regardless: the diff never reached the terminal,
       // whichever prompt turns out to have caused it.
       const record = graft ? { ...r, isSidechain: true, parentUuid: spawnedBy } : { ...r, isSidechain: true }
+      span(record)
       prompts.observe(record)
       ledger.observe(record, prompts)
     })
@@ -189,6 +203,8 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     undone,
     unrecognisedModes: ledger.unrecognisedModes(),
     skippedLines,
+    startedAt: bounds.first?.iso ?? null,
+    endedAt: bounds.last?.iso ?? null,
     byPrompt,
     largestAuto,
     filesTouched: perFile.size,

@@ -50,6 +50,13 @@ export function localDate(iso: string): string {
   return `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}`
 }
 
+/** A local `YYYY-MM-DD HH:MM`, or the unknown-date marker when the timestamp does not parse. */
+export function localStamp(iso: string): string {
+  const at = instant(iso)
+  if (at === null) return UNKNOWN_DATE
+  return `${localDate(iso)} ${two(at.getHours())}:${two(at.getMinutes())}`
+}
+
 /**
  * One moment as local `HH:MM`, with a `+Nd` suffix when it falls on a later
  * local day than `originIso`, and `-Nd` when it falls on an earlier one. The
