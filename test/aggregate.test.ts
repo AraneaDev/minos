@@ -175,3 +175,18 @@ test('shell writes are counted apart from the classes, once by tool_use id, insi
   expect(a.total.possiblyUnseenWritesNote).toContain('loose heuristic')
   expect(a.total.changes).toEqual({ decided: 0, auto: 0, subagent: 0, undone: 0 })
 })
+
+test('counts a session whose span straddles a narrow window with no change inside it', () => {
+  const r = report([
+    op('t1', { at: '2026-09-20T10:00:00Z', attestation: 'auto' }),
+    op('t2', { at: '2026-09-25T10:00:00Z', attestation: 'auto' }),
+  ])
+  const a = one([r], { since: '2026-09-22', until: '2026-09-23' })
+  expect(a.total.sessions).toBe(1)
+  expect(a.total.changes.auto).toBe(0)
+})
+
+test('does not count a session with no known start or end and no change in the window', () => {
+  const r = report([], { startedAt: null, endedAt: null })
+  expect(one([r], { since: '2026-09-22', until: null }).total.sessions).toBe(0)
+})

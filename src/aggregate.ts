@@ -10,7 +10,7 @@
 import type { SessionReport } from './session'
 import type { Operation, ShellWrite } from './types'
 import type { Undone } from './reverts'
-import { inWindow, undoneInWindow } from './window'
+import { inWindow, spansWindow, undoneInWindow } from './window'
 import type { Window } from './window'
 
 /** Changes per label. `undone` is a count over the others, not a fourth label. */
@@ -147,7 +147,10 @@ class Tally {
     for (const w of report.shellWrites) this.addShellWrite(w)
     for (const u of report.undone) this.addUndone(u)
     const touched = report.operations.some((o) => inWindow(o.at, this.window))
-    const spans = [report.startedAt, report.endedAt].some((t) => t !== null && inWindow(t, this.window))
+    // A session counts when its span overlaps the window, even with no change
+    // inside it, but only when at least one end of that span is known.
+    const known = report.startedAt !== null || report.endedAt !== null
+    const spans = known && spansWindow(report.startedAt, report.endedAt, this.window)
     this.oldest = earlier(this.oldest, report.startedAt)
     this.newest = later(this.newest, report.endedAt)
     if (!touched && !spans) return

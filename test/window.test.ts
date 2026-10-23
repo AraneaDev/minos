@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { describeWindow, inWindow, undoneInWindow } from '../src/window'
+import { describeWindow, inWindow, spansWindow, undoneInWindow } from '../src/window'
 import type { Undone } from '../src/reverts'
 import type { Operation } from '../src/types'
 
@@ -42,4 +42,13 @@ test('describeWindow names an open start and shows today for an open end', () =>
   process.env.TZ = 'UTC'
   expect(describeWindow({ since: null, until: '2026-09-01' })).toBe('start of history to 2026-09-01')
   expect(describeWindow({ since: '2026-09-02', until: null })).toBe(`2026-09-02 to ${new Date().toISOString().slice(0, 10)}`)
+})
+
+test('spansWindow keeps a span that overlaps the window and one with a missing end', () => {
+  const w = { since: '2026-09-22', until: '2026-09-23' }
+  expect(spansWindow('2026-09-20T10:00:00Z', '2026-09-25T10:00:00Z', w)).toBe(true)
+  expect(spansWindow('2026-09-20T10:00:00Z', '2026-09-21T10:00:00Z', w)).toBe(false)
+  expect(spansWindow('2026-09-24T10:00:00Z', '2026-09-25T10:00:00Z', w)).toBe(false)
+  expect(spansWindow(null, '2026-09-25T10:00:00Z', w)).toBe(true)
+  expect(spansWindow(null, null, w)).toBe(true)
 })

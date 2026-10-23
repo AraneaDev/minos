@@ -38,6 +38,17 @@ export function inWindow(iso: string, window: Window): boolean {
 }
 
 /**
+ * Whether a session's span overlaps the window: it did not end before `since`
+ * and did not start after `until`. An unknown start or end cannot rule the
+ * session out, so a span with a missing endpoint overlaps on that side.
+ */
+export function spansWindow(startedAt: string | null, endedAt: string | null, window: Window): boolean {
+  if (endedAt !== null && !inWindow(endedAt, { since: window.since, until: null })) return false
+  if (startedAt !== null && !inWindow(startedAt, { since: null, until: window.until })) return false
+  return true
+}
+
+/**
  * Whether an undone finding belongs in the window: it is kept when the change
  * that was undone falls inside it, whenever the undoing happened.
  */

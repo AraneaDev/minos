@@ -2,7 +2,7 @@ import { basename } from 'node:path'
 import { localStamp } from '../clock'
 import { projectFor, sessionFiles, subagentFiles } from '../paths'
 import { analyseSession } from '../session'
-import { describeWindow, inWindow, type Window } from '../window'
+import { describeWindow, spansWindow, type Window } from '../window'
 
 /**
  * Sessions for this directory, newest last, with the headline counts for
@@ -57,8 +57,7 @@ export async function runSessions(cwd: string, limit: number, window: Window): P
     const subagents = await subagentFiles(dir, sessionId)
     const report = await analyseSession({ transcript, subagents }, { window })
     const { startedAt, endedAt } = report
-    if (endedAt !== null && !inWindow(endedAt, { since: window.since, until: null })) continue
-    if (startedAt !== null && !inWindow(startedAt, { since: null, until: window.until })) continue
+    if (!spansWindow(startedAt, endedAt, window)) continue
     const t = report.totals
     const first = startedAt === null ? '(unknown date)' : localStamp(startedAt)
     const last = endedAt === null ? '(unknown date)' : localStamp(endedAt)
