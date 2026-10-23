@@ -106,13 +106,30 @@ class Tally {
   failed = 0
   private readonly seen = new Set<string>()
   private readonly seenFailed = new Set<string>()
+  /**
+   * Every tool_use id any session in this scope saw fail. A forked transcript
+   * can hold a call whose error result only the parent holds, so one session
+   * lists it as an operation and another as failed; knowing every failure up
+   * front keeps that call out of the changes whichever session comes first.
+   */
+  private readonly knownFailed = new Set<string>()
   private readonly seenShell = new Set<string>()
   private readonly seenUndone = new Set<string>()
 
   constructor(private readonly window: Window) {}
 
-  /** Count one operation unless its tool_use id was seen or it falls outside the window. */
+  /** Learns which tool calls failed in one session; called for every session in scope before any is added. */
+  noteFailed(report: SessionReport): void {
+    for (const f of report.failedChanges) this.knownFailed.add(f.toolUseId)
+  }
+
+  /**
+   * Count one operation unless its tool_use id was seen, failed in any
+   * session in scope (it is counted with the failed ones instead), or falls
+   * outside the window.
+   */
   add(op: Operation): void {
+    if (this.knownFailed.has(op.toolUseId)) return
     if (this.seen.has(op.toolUseId)) {
       if (inWindow(op.at, this.window)) this.duplicates++
       return
@@ -137,8 +154,13 @@ class Tally {
     else if (Number.isNaN(instant(w.at))) this.undatedShell++
   }
 
-  /** Count an undone finding by the operation that introduced it, once. */
+  /**
+   * Count an undone finding by the operation that introduced it, once. A
+   * finding where either side failed in another copy is not counted: a change
+   * that never happened cannot be undone, nor can it undo one.
+   */
   addUndone(u: Undone): void {
+    if (this.knownFailed.has(u.introduced.toolUseId) || this.knownFailed.has(u.undoneBy.toolUseId)) return
     if (this.seenUndone.has(u.introduced.toolUseId)) return
     this.seenUndone.add(u.introduced.toolUseId)
     if (undoneInWindow(u, this.window)) this.changes.undone++
@@ -192,7 +214,9 @@ const totalChanges = (p: ProjectAggregate): number => p.changes.decided + p.chan
  * counted when the change that was undone falls inside the window, whenever
  * the undoing happened. Each project is deduplicated on its own, and the
  * total is deduplicated across all of them, so a fork in another project is
- * counted once in the total but in both projects' rows.
+ * counted once in the total but in both projects' rows. A call that failed
+ * in any session of a scope counts as failed in that scope and never as a
+ * change, even where a forked copy holds it without its error result.
  */
 export function aggregate(
   input: { dir: string; cwds: string[]; reports: SessionReport[] }[],
@@ -206,8 +230,10 @@ export function aggregate(
   // the window counts it; only the total reports it, so no project tracks it.
   let oldest: string | null = null
   let newest: string | null = null
+  for (const { reports } of input) for (const report of reports) total.noteFailed(report)
   for (const { dir, cwds, reports } of input) {
     const tally = new Tally(window)
+    for (const report of reports) tally.noteFailed(report)
     for (const cwd of cwds) {
       tally.cwds.add(cwd)
       total.cwds.add(cwd)

@@ -247,3 +247,38 @@ test('renderAll says how many failed changes it left out, and nothing when there
   expect(renderAll(one([failed]))).toContain('left out 1 change whose tool call failed or was refused, so nothing was written')
   expect(renderAll(one([report([op('t1')])]))).not.toContain('failed or was refused')
 })
+
+test('a forked copy holding a change whose error result only the other copy holds counts it as failed, not as a change', () => {
+  const landed = report([op('f1', { attestation: 'auto', permissionMode: 'acceptEdits' })])
+  const failed = report([], { failedChanges: [{ toolUseId: 'f1', at: '2026-09-22T10:00:00Z' }] })
+  for (const reports of [
+    [landed, failed],
+    [failed, landed],
+  ]) {
+    const a = one(reports)
+    expect(a.total.changes).toEqual({ decided: 0, auto: 0, subagent: 0, undone: 0 })
+    expect(a.total.autoModes).toEqual({})
+    expect(a.projects[0]?.changes.auto).toBe(0)
+    expect(a.failedDropped).toBe(1)
+    expect(a.duplicatesDropped).toBe(0)
+  }
+  const across = aggregate(
+    [
+      { dir: 'p1', cwds: ['/r1'], reports: [landed] },
+      { dir: 'p2', cwds: ['/r2'], reports: [failed] },
+    ],
+    NO_WINDOW,
+    0,
+  )
+  expect(across.total.changes.auto).toBe(0)
+  expect(across.failedDropped).toBe(1)
+})
+
+test('an undone finding resting on a change known failed in another copy is not counted', () => {
+  const introduced = op('f1', { newString: 'x' })
+  const undoneBy = op('t2', { at: '2026-09-22T11:00:00Z', oldString: 'x' })
+  const landed = report([introduced, undoneBy], { undone: [{ file: '/r/a.ts', line: null, kind: 'reverted', introduced, undoneBy }] as SessionReport['undone'] })
+  const failed = report([], { failedChanges: [{ toolUseId: 'f1', at: '2026-09-22T10:00:00Z' }] })
+  const a = one([landed, failed])
+  expect(a.total.changes).toEqual({ decided: 1, auto: 0, subagent: 0, undone: 0 })
+})
