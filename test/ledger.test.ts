@@ -114,8 +114,14 @@ test.each(['sed -i s/a/b/ f', 'echo x > f', 'echo x > src/a.ts', 'echo x >> f', 
   expect(ledger.operations()).toHaveLength(0)
 })
 
-test.each(['> "$TMPDIR/x"', 'rm -rf "/tmp/x"', 'tee "/tmp/log"', 'mv "/tmp/a" b', 'mvn test', 'cat tee.ts', 'grep -r tee src', 'echo hi # rm old', 'docker rm c1', 'git rm a.ts', 'ls 2>&1', 'cmd > /dev/null', 'cmd 2>/dev/null', 'ls', 'cmd 2>&1 | grep x', "bun -e 'const f = () => x > 1'", "php -r '$a->b();'", "git log --format='%an <%ae>'", 'echo x > /tmp/a', 'rm -rf /tmp/x', 'echo x > $TMPDIR/a', 'docker run --rm img', "cat <<'EOF'\nfoo > bar\nEOF"])('a shell command that only reads or discards does not count: %s', (command) => {
+test.each(['> "$TMPDIR/x"', 'rm -rf "/tmp/x"', 'tee "/tmp/log"', 'mvn test', 'cat tee.ts', 'grep -r tee src', 'echo hi # rm old', 'docker rm c1', 'git rm a.ts', 'ls 2>&1', 'cmd > /dev/null', 'cmd 2>/dev/null', 'ls', 'cmd 2>&1 | grep x', "bun -e 'const f = () => x > 1'", "php -r '$a->b();'", "git log --format='%an <%ae>'", 'echo x > /tmp/a', 'rm -rf /tmp/x', 'echo x > $TMPDIR/a', 'docker run --rm img', "cat <<'EOF'\nfoo > bar\nEOF"])('a shell command that only reads or discards does not count: %s', (command) => {
   expect(shellWritesFor(command).shellWrites()).toEqual([])
+})
+
+// Known miss: only the first path token is checked against the temp dirs, so a
+// move out of /tmp into the tree reads as discarding. It writes `b`.
+test('mv "/tmp/a" b is a known miss: the first path token decides, so it is not counted', () => {
+  expect(shellWritesFor('mv "/tmp/a" b').shellWrites()).toEqual([])
 })
 
 test("grep '>' f no longer reads the quoted > as a redirect", () => {

@@ -5,7 +5,7 @@ import { findUndone } from './reverts'
 import { eachRecord } from './transcript'
 import type { Attestation, Operation, Prompt, ShellWrite, UnknownRecord } from './types'
 import type { Undone } from './reverts'
-import { inWindow } from './window'
+import { inWindow, undoneInWindow } from './window'
 import type { Window } from './window'
 
 /** One file's contribution to a total. */
@@ -76,6 +76,8 @@ export interface SessionReport {
   operations: Operation[]
   /** Bash calls inside the window that look like file writes: a heuristic, outside `totals` and every other count. */
   shellWrites: ShellWrite[]
+  /** Operations left out because their timestamp does not parse and a window is set; 0 with no window. */
+  undatedDropped: number
 }
 
 const lines = (text: string | null): number => {
@@ -170,7 +172,7 @@ export async function analyseSession(
   const undone: Undone[] = []
   const perFile = new Map<string, Operation[]>()
   for (const [file, all] of ledger.byFile()) {
-    undone.push(...findUndone(file, all, null).filter((u) => inside(u.introduced)))
+    undone.push(...findUndone(file, all, null).filter((u) => undoneInWindow(u, window)))
     const ops = all.filter(inside)
     if (ops.length === 0) continue
     perFile.set(file, ops)
@@ -230,5 +232,6 @@ export async function analyseSession(
     unattributedCount,
     operations,
     shellWrites: ledger.shellWrites().filter((w) => inWindow(w.at, window)),
+    undatedDropped: ledger.operations().filter((o) => !inside(o) && Number.isNaN(new Date(o.at).getTime())).length,
   }
 }

@@ -2,7 +2,7 @@ import { basename } from 'node:path'
 import { localStamp } from '../clock'
 import { projectFor, sessionFiles, subagentFiles } from '../paths'
 import { analyseSession } from '../session'
-import { inWindow, type Window } from '../window'
+import { describeWindow, inWindow, type Window } from '../window'
 
 /**
  * Sessions for this directory, newest last, with the headline counts for
@@ -25,7 +25,9 @@ import { inWindow, type Window } from '../window'
  * not compared as if they shared a unit. With a window, a session is kept
  * when its span overlaps it (it did not end before `since` or start after
  * `until`; an unknown end or start cannot rule it out), and the last line
- * states the window, an open end reading `start of history` or `today`.
+ * states the window, an open end reading `start of history` or today's local
+ * date. The counts in a row are the changes inside the window, not the whole
+ * session's, so a session spanning the edge shows only its in-window changes.
  *
  * Returns null when the directory has no transcripts at all, rather than a
  * line of prose (Finding 7). An error message returned as the result was
@@ -53,7 +55,7 @@ export async function runSessions(cwd: string, limit: number, window: Window): P
     if (rows.length >= limit) break
     const sessionId = basename(transcript, '.jsonl')
     const subagents = await subagentFiles(dir, sessionId)
-    const report = await analyseSession({ transcript, subagents })
+    const report = await analyseSession({ transcript, subagents }, { window })
     const { startedAt, endedAt } = report
     if (endedAt !== null && !inWindow(endedAt, { since: window.since, until: null })) continue
     if (startedAt !== null && !inWindow(startedAt, { since: null, until: window.until })) continue
@@ -68,7 +70,7 @@ export async function runSessions(cwd: string, limit: number, window: Window): P
   }
   lines.push(...rows)
   if (window.since !== null || window.until !== null) {
-    lines.push(`window: ${window.since ?? 'start of history'} to ${window.until ?? 'today'}`)
+    lines.push(`window: ${describeWindow(window)}`)
   }
   return lines.join('\n')
 }

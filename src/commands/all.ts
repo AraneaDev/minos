@@ -1,11 +1,12 @@
 import { readdir } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import { aggregate } from '../aggregate'
+import { aggregate, DECIDED_NOTE } from '../aggregate'
 import type { Aggregate, ClassCounts, ProjectAggregate } from '../aggregate'
 import { localDate } from '../clock'
 import { claudeHome, sessionFiles, subagentFiles } from '../paths'
 import { analyseSession } from '../session'
 import type { SessionReport } from '../session'
+import { describeWindow } from '../window'
 import type { Window } from '../window'
 
 /**
@@ -55,18 +56,23 @@ export async function collectAll(window: Window): Promise<Aggregate> {
   const root = join(claudeHome(), 'projects')
   const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
   const dirs = entries.filter((e) => e.isDirectory()).map((e) => join(root, e.name)).sort()
+  let unreadable = 0
   const read = await pooled(dirs, PROJECTS_IN_FLIGHT, async (dir) => {
     const files = await sessionFiles(dir)
     if (files.length === 0) return null
     const reports: SessionReport[] = []
     for (const transcript of files) {
-      const subagents = await subagentFiles(dir, basename(transcript, '.jsonl'))
-      reports.push(await analyseSession({ transcript, subagents }))
+      try {
+        const subagents = await subagentFiles(dir, basename(transcript, '.jsonl'))
+        reports.push(await analyseSession({ transcript, subagents }))
+      } catch {
+        unreadable++
+      }
     }
     return { dir, cwds: newestFirst(reports), reports }
   })
   const projects = read.filter((p) => p !== null)
-  return aggregate(projects, window, read.length - projects.length)
+  return aggregate(projects, window, read.length - projects.length, unreadable)
 }
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
@@ -96,7 +102,6 @@ function rowsExceedTotal(a: Aggregate): boolean {
  * pair of dates or says plainly that it has no start.
  */
 export function renderAll(a: Aggregate): string {
-  const today = localDate(new Date().toISOString())
   const rows = [...a.projects.map((p) => [label(p), ...cells(p).map(String)]), ['total', ...cells(a.total).map(String)]]
   const header = ['project', ...COLUMNS]
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] as string).length)))
@@ -106,7 +111,7 @@ export function renderAll(a: Aggregate): string {
   const day = (iso: string | null): string => (iso === null ? 'unknown' : localDate(iso))
   const w = a.total.possiblyUnseenWrites
   const out = [
-    `MINOS  all projects  window ${a.window.since ?? 'start of history'} to ${a.window.until ?? today}`,
+    `MINOS  all projects  window ${describeWindow(a.window)}`,
     'counts are changes: one Edit, Write or NotebookEdit tool call each, deduplicated by tool_use id',
     '',
     line(header),
@@ -120,6 +125,8 @@ export function renderAll(a: Aggregate): string {
   if (a.undatedDropped > 0) {
     out.push(`left out ${plural(a.undatedDropped, 'change', 'changes')} with no readable timestamp, which no window can place`)
   }
+  if (a.total.changes.decided > 0) out.push(DECIDED_NOTE)
+  if (a.unreadableSkipped > 0) out.push(`skipped ${plural(a.unreadableSkipped, 'unreadable transcript', 'unreadable transcripts')}`)
   out.push(
     `history: oldest transcript ${day(a.oldestTranscript)}, newest ${day(a.newestTranscript)}; ` +
       `${plural(a.emptyProjectDirs, 'project directory has', 'project directories have')} no transcripts left (cleanupPeriodDays prunes them)`,

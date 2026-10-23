@@ -42,6 +42,7 @@ function report(operations: Operation[], over: Partial<SessionReport> = {}): Ses
     unattributedCount: 0,
     operations,
     shellWrites: [],
+    undatedDropped: 0,
     ...over,
   }
 }
@@ -50,7 +51,6 @@ const one = (reports: SessionReport[], window = NO_WINDOW) =>
   aggregate([{ dir: 'p', cwds: ['/r'], reports }], window, 0)
 
 test('counts a session that spans the window boundary only for its in-window changes', () => {
-  process.env.TZ = 'UTC'
   const r = report([
     op('t1', { at: '2026-09-21T23:00:00Z', attestation: 'auto' }),
     op('t2', { at: '2026-09-22T10:00:00Z', attestation: 'auto' }),

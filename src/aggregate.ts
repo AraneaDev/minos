@@ -9,7 +9,8 @@
  */
 import type { SessionReport } from './session'
 import type { Operation, ShellWrite } from './types'
-import { inWindow } from './window'
+import type { Undone } from './reverts'
+import { inWindow, undoneInWindow } from './window'
 import type { Window } from './window'
 
 /** Changes per label. `undone` is a count over the others, not a fourth label. */
@@ -24,6 +25,10 @@ export interface ClassCounts {
 const POSSIBLY_UNSEEN_WRITES_NOTE =
   'shell commands matching a write pattern: a loose heuristic, not counted in changes; it misses some writes, and many matches write outside the repository'
 
+/** What the export says about `decided`, beside the numbers. */
+export const DECIDED_NOTE =
+  'decided is inferred from permission mode alone, not from a recorded approval; a standing allow rule can mean nothing was ever put on screen'
+
 /** One project's counts, or the deduplicated total over all of them. */
 export interface ProjectAggregate {
   dir: string
@@ -37,6 +42,8 @@ export interface ProjectAggregate {
   possiblyUnseenWrites: Omit<ClassCounts, 'undone'>
   /** The caveat for `possiblyUnseenWrites`, repeated so the JSON carries it. */
   possiblyUnseenWritesNote: string
+  /** The caveat for the `decided` count, repeated so the JSON carries it. */
+  decidedNote: string
   /** Auto operations per recorded permission mode; a null mode counts as 'unknown'. */
   autoModes: Record<string, number>
   /** The earliest startedAt among its counted sessions, as written. */
@@ -56,6 +63,8 @@ export interface Aggregate {
   duplicatesDropped: number
   /** Operations with no parseable timestamp, dropped only when a window is set. */
   undatedDropped: number
+  /** Sessions whose transcript could not be read and were left out. */
+  unreadableSkipped: number
   /** Project directories with no transcript left. */
   emptyProjectDirs: number
   /** The earliest startedAt over every session seen, window or not. */
@@ -126,17 +135,17 @@ class Tally {
   }
 
   /** Count an undone finding by the operation that introduced it, once. */
-  addUndone(introduced: Operation): void {
-    if (this.seenUndone.has(introduced.toolUseId)) return
-    this.seenUndone.add(introduced.toolUseId)
-    if (inWindow(introduced.at, this.window)) this.changes.undone++
+  addUndone(u: Undone): void {
+    if (this.seenUndone.has(u.introduced.toolUseId)) return
+    this.seenUndone.add(u.introduced.toolUseId)
+    if (undoneInWindow(u, this.window)) this.changes.undone++
   }
 
   /** Fold one session in: its operations, its undone findings and its time span. */
   addSession(report: SessionReport): void {
     for (const op of report.operations) this.add(op)
     for (const w of report.shellWrites) this.addShellWrite(w)
-    for (const u of report.undone) this.addUndone(u.introduced)
+    for (const u of report.undone) this.addUndone(u)
     const touched = report.operations.some((o) => inWindow(o.at, this.window))
     const spans = [report.startedAt, report.endedAt].some((t) => t !== null && inWindow(t, this.window))
     this.oldest = earlier(this.oldest, report.startedAt)
@@ -155,6 +164,7 @@ class Tally {
       changes: this.changes,
       possiblyUnseenWrites: this.shellWrites,
       possiblyUnseenWritesNote: POSSIBLY_UNSEEN_WRITES_NOTE,
+      decidedNote: DECIDED_NOTE,
       autoModes: this.autoModes,
       firstAt: this.firstAt,
       lastAt: this.lastAt,
@@ -178,6 +188,7 @@ export function aggregate(
   input: { dir: string; cwds: string[]; reports: SessionReport[] }[],
   window: Window,
   emptyProjectDirs: number,
+  unreadableSkipped = 0,
 ): Aggregate {
   const total = new Tally(window)
   const projects: ProjectAggregate[] = []
@@ -200,6 +211,7 @@ export function aggregate(
     total: total.result('(all)', true),
     duplicatesDropped: total.duplicates,
     undatedDropped: total.undated,
+    unreadableSkipped,
     emptyProjectDirs,
     oldestTranscript: total.oldest,
     newestTranscript: total.newest,

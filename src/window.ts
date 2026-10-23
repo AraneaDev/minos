@@ -6,6 +6,9 @@
  * midnight where the reader is, not from midnight in UTC.
  */
 
+import { localDate } from './clock'
+import type { Undone } from './reverts'
+
 /** Both bounds are optional and inclusive; a null bound is open. */
 export interface Window {
   since: string | null
@@ -32,4 +35,22 @@ export function inWindow(iso: string, window: Window): boolean {
   if (window.since !== null && at < localMidnight(window.since, 0)) return false
   if (window.until !== null && at >= localMidnight(window.until, 1)) return false
   return true
+}
+
+/**
+ * Whether an undone finding belongs in the window: it is kept when the change
+ * that was undone falls inside it, whenever the undoing happened.
+ */
+export function undoneInWindow(u: Undone, window: Window): boolean {
+  return inWindow(u.introduced.at, window)
+}
+
+/**
+ * The window as `<from> to <to>` for a header line. An open `since` reads
+ * `start of history` and an open `until` reads as today's local date, so the
+ * stated window is a pair of dates or says plainly that it has no start.
+ */
+export function describeWindow(window: Window): string {
+  const today = localDate(new Date().toISOString())
+  return `${window.since ?? 'start of history'} to ${window.until ?? today}`
 }

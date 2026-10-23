@@ -129,7 +129,7 @@ export interface ProjectMatch {
 
 /**
  * The distinct cwds recorded across every transcript in a project directory,
- * sorted. Transcripts are read newest first, each with the same bounded head
+ * sorted. Transcripts are read in name order, which does not matter since the result is sorted, each with the same bounded head
  * read as `recordedCwd`, so a directory is never read whole. A repository
  * that was moved or renamed records more than one path here, and a missing
  * directory or an unreadable transcript contributes nothing rather than
@@ -137,7 +137,7 @@ export interface ProjectMatch {
  */
 export async function recordedCwds(projectDir: string): Promise<string[]> {
   const found = new Set<string>()
-  for (const file of (await sessionFiles(projectDir)).reverse()) {
+  for (const file of await sessionFiles(projectDir)) {
     const recorded = await recordedCwd(file)
     if (recorded !== null) found.add(recorded)
   }

@@ -7,12 +7,14 @@ import type { SessionPaths } from './report'
  * The whole report model as JSON, for anything that wants the numbers rather
  * than the layout. With a window set, every number comes from the changes
  * inside it and the JSON says which window that was; with none, the output is
- * exactly the unwindowed model, with no `window` field at all.
+ * exactly the unwindowed model, with no `window` or `undatedDropped` field at all. `undatedDropped` counts the
+ * changes a window had to leave out for lack of a readable timestamp.
  */
 export async function runExport(paths: SessionPaths, window: Window = { since: null, until: null }): Promise<string> {
   const bounded = window.since !== null || window.until !== null
   const report = await analyseSession(paths, { window })
-  return JSON.stringify(bounded ? { ...report, window } : report, null, 2)
+  const { undatedDropped, ...model } = report
+  return JSON.stringify(bounded ? { ...model, window, undatedDropped } : model, null, 2)
 }
 
 /**
