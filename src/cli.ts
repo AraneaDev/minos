@@ -1,21 +1,27 @@
 #!/usr/bin/env bun
 import { colourEnabled, paint } from './colour'
+import { runAll } from './commands/all'
 import { resolveSession, runReport } from './commands/report'
-import { runExport } from './commands/export'
+import { runExport, runExportAll } from './commands/export'
 import { runFile } from './commands/file'
 import { runSessions } from './commands/sessions'
 import { runUndone } from './commands/undone'
+import { claudeHome } from './paths'
+import type { Window } from './window'
 
 const COMMANDS = ['report', 'file', 'undone', 'sessions', 'export'] as const
 
-const FLAG_NAMES = ['project', 'session', 'limit'] as const
+const FLAG_NAMES = ['project', 'session', 'limit', 'since', 'until'] as const
+
+/** Flags that take no value. Kept apart from FLAG_NAMES, whose entries consume the argument after them. */
+const BARE_FLAGS = ['all'] as const
 
 /**
  * Usage text for `--help`/`-h`, naming the five real commands and only the
- * flags each one actually accepts. `--since` and `--json` are named in the
- * spec's illustrative command surface but implemented nowhere in this CLI,
- * so they are deliberately absent here rather than promising a flag that
- * would silently do nothing.
+ * flags each one actually accepts. `--json` is named in the spec's
+ * illustrative command surface but implemented nowhere in this CLI, so it is
+ * deliberately absent here rather than promising a flag that would silently
+ * do nothing.
  */
 const USAGE = `minos: reports what a Claude Code session changed, and which of it was ever put to you as a decision.
 
@@ -23,7 +29,12 @@ const USAGE = `minos: reports what a Claude Code session changed, and which of i
   minos file <path> [--session <id>] [--project <path>]   one file's operation history in the session
   minos undone [--session <id>] [--project <path>]   the undone changes on their own
   minos sessions [--limit <n>] [--project <path>]     sessions with headline counts, to pick one
-  minos export [--session <id>] [--project <path>]    the ledger as data`
+  minos sessions --all                                every project, with totals
+  minos export [--session <id>] [--project <path>]    the ledger as data
+  minos export --all                                  every project's counts as data
+
+  --since <YYYY-MM-DD> and --until <YYYY-MM-DD> bound sessions, export and --all
+  to local calendar days, both inclusive.`
 
 /**
  * A flag as it was typed: absent altogether, or present with the value that
@@ -61,6 +72,7 @@ function positional(argv: string[]): string[] {
       i++
       continue
     }
+    if (a.startsWith('--') && (BARE_FLAGS as readonly string[]).includes(a.slice(2))) continue
     out.push(a)
   }
   return out
@@ -77,6 +89,37 @@ function positional(argv: string[]): string[] {
 function parsePositiveInt(value: string): number | null {
   const n = Number(value)
   return Number.isInteger(n) && n > 0 ? n : null
+}
+
+/**
+ * A `--since`/`--until` value, accepted only as a real calendar day written
+ * `YYYY-MM-DD`. `inWindow` turns a malformed bound into NaN and so quietly
+ * drops every change, and `new Date` rolls `2026-02-30` over into March, so
+ * both the shape and the day itself are checked here, before any Window is
+ * built. Returns null for anything else, leaving the caller to report it.
+ */
+function parseDay(value: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+  const [y, m, d] = value.split('-').map(Number) as [number, number, number]
+  const at = new Date(Date.UTC(y, m - 1, d))
+  return at.getUTCFullYear() === y && at.getUTCMonth() === m - 1 && at.getUTCDate() === d ? value : null
+}
+
+/** The window the user typed, or the error line that explains why it is not one. */
+function readWindow(args: string[]): { window: Window } | { error: string } {
+  const bounds: Record<'since' | 'until', string | null> = { since: null, until: null }
+  for (const name of ['since', 'until'] as const) {
+    const typed = flag(args, name)
+    if (!typed.given) continue
+    const day = typed.value === null ? null : parseDay(typed.value)
+    if (day === null) return { error: `minos: --${name} must be YYYY-MM-DD` }
+    bounds[name] = day
+  }
+  // Both are YYYY-MM-DD, so string order is calendar order.
+  if (bounds.since !== null && bounds.until !== null && bounds.since > bounds.until) {
+    return { error: 'minos: --since is after --until' }
+  }
+  return { window: bounds }
 }
 
 /**
@@ -127,6 +170,44 @@ export async function main(argv: string[]): Promise<number> {
   }
   const session = sessionFlag.given ? (sessionFlag.value as string) : null
 
+  const typedWindow = readWindow(args)
+  if ('error' in typedWindow) {
+    console.error(typedWindow.error)
+    return 2
+  }
+  const { window } = typedWindow
+  const windowed = command === 'sessions' || command === 'export'
+  if (!windowed && (window.since !== null || window.until !== null)) {
+    console.error('minos: --since and --until work with sessions and export')
+    return 2
+  }
+
+  // --all is checked before anything resolves a project: it reads the whole
+  // store, so a flag naming one project or session would be silently ignored.
+  if (args.includes('--all')) {
+    if (!windowed) {
+      console.error('minos: --all works with sessions and export')
+      return 2
+    }
+    if (projectFlag.given || sessionFlag.given) {
+      console.error('minos: --all reports every project, so it takes no --project or --session')
+      return 2
+    }
+    if (flag(args, 'limit').given) {
+      console.error('minos: --all lists every project, so it takes no --limit')
+      return 2
+    }
+    const out = command === 'export' ? await runExportAll(window) : await runAll(window)
+    if (out === null) {
+      console.error(`minos: no transcripts found under ${claudeHome()}/projects`)
+      return 1
+    }
+    // Not `show` for export: its JSON is for a program to parse.
+    if (command === 'export') console.log(out)
+    else show(out)
+    return 0
+  }
+
   if (command === 'sessions') {
     const limitFlag = flag(args, 'limit')
     if (limitFlag.given && limitFlag.value === null) {
@@ -139,7 +220,7 @@ export async function main(argv: string[]): Promise<number> {
       console.error(`minos: --limit must be a positive integer, got "${typed}"`)
       return 2
     }
-    const listing = await runSessions(cwd, limit, { since: null, until: null })
+    const listing = await runSessions(cwd, limit, window)
     if (listing === null) {
       console.error(`minos: no transcript found for ${cwd}`)
       return 1
@@ -167,7 +248,7 @@ export async function main(argv: string[]): Promise<number> {
 
   if (command === 'undone') show(await runUndone(paths))
   // Not `show`: export is JSON for a program to parse, so it never gets escapes.
-  else if (command === 'export') console.log(await runExport(paths))
+  else if (command === 'export') console.log(await runExport(paths, window))
   else if (command === 'file') show(await runFile(paths, target as string))
   else show(await runReport(paths))
 

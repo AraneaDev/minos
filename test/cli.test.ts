@@ -47,8 +47,8 @@ for (const helpFlag of ['--help', '-h']) {
       for (const command of ['report', 'file', 'undone', 'sessions', 'export']) {
         expect(usage).toContain(`minos ${command}`)
       }
-      // Real flags only: --since and --json do not exist anywhere in this CLI.
-      expect(usage).not.toContain('--since')
+      for (const name of ['--all', '--since', '--until']) expect(usage).toContain(name)
+      // Real flags only: --json does not exist anywhere in this CLI.
       expect(usage).not.toContain('--json')
       expect(usage).not.toContain('MINOS')
     } finally {
@@ -267,3 +267,96 @@ const ATTESTATIONS = ['decided', 'auto', 'subagent'] as const satisfies readonly
 const OPERATION_KINDS = ['write', 'edit', 'notebook'] as const satisfies readonly OperationKind[]
 void ATTESTATIONS
 void OPERATION_KINDS
+
+/** Runs main with stdout and stderr captured, returning the exit code and the first error line. */
+async function capture(argv: string[]): Promise<{ code: number; error: string; out: string }> {
+  const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+  const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const code = await main(argv)
+    return { code, error: String((errorSpy.mock.calls[0] ?? [''])[0]), out: String((logSpy.mock.calls[0] ?? [''])[0]) }
+  } finally {
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  }
+}
+
+// A malformed bound would reach `inWindow` as NaN and quietly drop every
+// change, so the CLI rejects it before a Window exists.
+for (const argv of [
+  ['sessions', '--since', '2026-9-22'],
+  ['export', '--since', '2026-13-01'],
+  ['sessions', '--all', '--since', '2026-02-30'],
+  ['sessions', '--since'],
+]) {
+  test(`a --since that is not a real YYYY-MM-DD day is rejected: ${argv.join(' ')}`, async () => {
+    const { code, error, out } = await capture(argv)
+    expect(code).toBe(2)
+    expect(error).toBe('minos: --since must be YYYY-MM-DD')
+    expect(out).toBe('')
+  })
+}
+
+test('a malformed --until is rejected the same way', async () => {
+  const { code, error } = await capture(['sessions', '--until', 'yesterday'])
+  expect(code).toBe(2)
+  expect(error).toBe('minos: --until must be YYYY-MM-DD')
+})
+
+test('a window whose start is after its end is rejected', async () => {
+  const { code, error } = await capture(['sessions', '--since', '2026-10-02', '--until', '2026-10-01'])
+  expect(code).toBe(2)
+  expect(error).toBe('minos: --since is after --until')
+})
+
+for (const argv of [
+  ['sessions', '--all', '--project', '/x'],
+  ['export', '--all', '--session', 'abc'],
+]) {
+  test(`--all refuses a project or session: ${argv.join(' ')}`, async () => {
+    const { code, error } = await capture(argv)
+    expect(code).toBe(2)
+    expect(error).toBe('minos: --all reports every project, so it takes no --project or --session')
+  })
+}
+
+test('--all refuses a limit rather than silently ignoring it', async () => {
+  const { code, error } = await capture(['sessions', '--all', '--limit', '3'])
+  expect(code).toBe(2)
+  expect(error).toBe('minos: --all lists every project, so it takes no --limit')
+})
+
+test('--all works only with sessions and export', async () => {
+  const { code, error } = await capture(['report', '--all'])
+  expect(code).toBe(2)
+  expect(error).toBe('minos: --all works with sessions and export')
+})
+
+test('a window on a command that cannot apply it is rejected rather than ignored', async () => {
+  const { code, error } = await capture(['undone', '--since', '2026-10-01'])
+  expect(code).toBe(2)
+  expect(error).toBe('minos: --since and --until work with sessions and export')
+})
+
+test('--all over a store with no transcripts says so on stderr', async () => {
+  const { code, error, out } = await capture(['sessions', '--all'])
+  expect(code).toBe(1)
+  expect(error).toContain('no transcripts found under')
+  expect(out).toBe('')
+})
+
+test('sessions --all and export --all dispatch once a project exists', async () => {
+  await withFakeProject('/fake/cli-all')
+  const text = await capture(['sessions', '--all', '--since', '2026-09-01', '--until', '2026-09-30'])
+  expect(text.code).toBe(0)
+  const json = await capture(['export', '--all'])
+  expect(json.code).toBe(0)
+  expect(JSON.parse(json.out).total.changes.auto + JSON.parse(json.out).total.changes.decided).toBe(1)
+})
+
+test('export with a window dispatches and carries the window', async () => {
+  await withFakeProject('/fake/cli-export-window')
+  const { code, out } = await capture(['export', '--project', '/fake/cli-export-window', '--since', '2026-09-07'])
+  expect(code).toBe(0)
+  expect(JSON.parse(out).window).toEqual({ since: '2026-09-07', until: null })
+})

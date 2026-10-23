@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
@@ -8,7 +8,8 @@ import { runFile } from '../src/commands/file'
 import { runSessions } from '../src/commands/sessions'
 import { localStamp } from '../src/clock'
 import type { Window } from '../src/window'
-import { runExport } from '../src/commands/export'
+import { runExport, runExportAll } from '../src/commands/export'
+import { collectAll, renderAll } from '../src/commands/all'
 import { main } from '../src/cli'
 import { encodeProjectSlug } from '../src/paths'
 import { FIXTURE_DIR } from '../scripts/make-fixtures'
@@ -489,4 +490,118 @@ test('file prints times in the reader\'s own zone', async () => {
   } finally {
     process.env.TZ = 'UTC'
   }
+})
+
+// Single-session export with a window: every number in the JSON comes from
+// changes inside the window, and an undone change is kept when the change
+// that was undone is inside it, whenever the undoing happened.
+test('export with a window counts only in-window changes and keeps undone findings by their introducing change', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'minos-export-window-'))
+  const transcript = join(dir, 'session.jsonl')
+  const records = [
+    { type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'acceptEdits', timestamp: '2026-09-01T10:00:00Z', sessionId: 's', cwd: '/repo', message: { content: 'edit' } },
+    { type: 'assistant', uuid: 'a1', parentUuid: 'u1', timestamp: '2026-09-01T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/repo/a.ts', old_string: 'x', new_string: 'y' } }] } },
+    { type: 'assistant', uuid: 'a2', parentUuid: 'u1', timestamp: '2026-09-03T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't2', name: 'Edit', input: { file_path: '/repo/a.ts', old_string: 'y', new_string: 'x' } }] } },
+    { type: 'assistant', uuid: 'a3', parentUuid: 'u1', timestamp: '2026-09-03T10:02:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 't3', name: 'Write', input: { file_path: '/repo/b.ts', content: 'one\ntwo\n' } }] } },
+  ]
+  await writeFile(transcript, records.map((r) => JSON.stringify(r)).join('\n'))
+  const at = { transcript, subagents: [] }
+  try {
+    const open = JSON.parse(await runExport(at))
+    expect('window' in open).toBe(false)
+    expect(open.operations.length).toBe(3)
+    expect(open.undone.length).toBe(1)
+
+    const late = JSON.parse(await runExport(at, { since: '2026-09-02', until: null }))
+    expect(late.window).toEqual({ since: '2026-09-02', until: null })
+    expect(late.operations.map((o: { toolUseId: string }) => o.toolUseId)).toEqual(['t2', 't3'])
+    expect(late.undone.length).toBe(0)
+    expect(late.totals.auto).toEqual({ files: 2, added: 3, removed: 1 })
+    expect(late.filesTouched).toBe(2)
+    expect(late.byPrompt[0].added).toBe(3)
+
+    const early = JSON.parse(await runExport(at, { since: null, until: '2026-09-01' }))
+    expect(early.operations.map((o: { toolUseId: string }) => o.toolUseId)).toEqual(['t1'])
+    expect(early.undone.length).toBe(1)
+    expect(early.byPrompt[0].undone).toBe(1)
+    expect(early.largestAuto).toEqual([{ file: '/repo/a.ts', added: 1, removed: 1, promptIndex: 1 }])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+// --all walks a whole fake store: one directory that holds no transcript any
+// more, one with a parent session and a fork that copies one of its changes,
+// and one plain project.
+describe('every project at once', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'minos-all-'))
+    process.env.CLAUDE_CONFIG_DIR = root
+    const projects = join(root, 'projects')
+    const write = async (dir: string, name: string, records: object[]): Promise<void> => {
+      await mkdir(join(projects, dir), { recursive: true })
+      await writeFile(join(projects, dir, name), records.map((r) => JSON.stringify(r)).join('\n'))
+    }
+    await mkdir(join(projects, '-gone'), { recursive: true })
+    await writeFile(join(projects, '-gone', 'notes.txt'), 'pruned')
+
+    const prompt = { type: 'user', uuid: 'a-u1', parentUuid: null, promptId: 'a-p1', permissionMode: 'acceptEdits', timestamp: '2026-09-10T10:00:00Z', sessionId: 'parent', cwd: '/repo/a', message: { content: 'go' } }
+    const first = { type: 'assistant', uuid: 'a-a1', parentUuid: 'a-u1', timestamp: '2026-09-10T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'a-t1', name: 'Write', input: { file_path: '/repo/a/x.ts', content: 'x\n' } }] } }
+    const second = { type: 'assistant', uuid: 'a-a2', parentUuid: 'a-u1', timestamp: '2026-09-10T10:02:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'a-t2', name: 'Edit', input: { file_path: '/repo/a/x.ts', old_string: 'x', new_string: 'y' } }] } }
+    await write('-repo-a', 'parent.jsonl', [prompt, first, second])
+    // The fork keeps the copied records' original timestamps, as Claude Code does.
+    const own = { type: 'assistant', uuid: 'f-a3', parentUuid: 'a-u1', timestamp: '2026-09-11T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'f-t3', name: 'Write', input: { file_path: '/repo/a/y.ts', content: 'y\n' } }] } }
+    await write('-repo-a', 'fork.jsonl', [{ ...prompt, sessionId: 'fork' }, first, own])
+
+    await write('-repo-b', 'plain.jsonl', [
+      { type: 'user', uuid: 'b-u1', parentUuid: null, promptId: 'b-p1', permissionMode: 'default', timestamp: '2026-09-12T10:00:00Z', sessionId: 'plain', cwd: '/repo/b', message: { content: 'go' } },
+      { type: 'assistant', uuid: 'b-a1', parentUuid: 'b-u1', timestamp: '2026-09-12T10:01:00Z', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'b-t1', name: 'Write', input: { file_path: '/repo/b/z.ts', content: 'z\n' } }] } },
+    ])
+  })
+
+  afterEach(async () => {
+    delete process.env.CLAUDE_CONFIG_DIR
+    await rm(root, { recursive: true, force: true })
+  })
+
+  test('renderAll prints a row per project, the total, the window, the dedup count and what the history covers', async () => {
+    const lines = renderAll(await collectAll({ since: '2026-09-01', until: '2026-09-30' })).split('\n')
+    expect(lines[0]).toBe('MINOS  all projects  window 2026-09-01 to 2026-09-30')
+    expect(lines[1]).toBe('counts are changes: one Edit, Write or NotebookEdit tool call each, deduplicated by tool_use id')
+    expect(lines[3]).toBe('project  sessions  decided  auto  subagent  undone')
+    expect(lines[4]).toBe('/repo/a         2        0     3         0       0')
+    expect(lines[5]).toBe('/repo/b         1        1     0         0       0')
+    expect(lines[6]).toBe('total           3        1     3         0       0')
+    expect(lines).toContain('auto by mode: acceptEdits 3')
+    expect(lines).toContain('dropped 1 duplicate change copied between forked or resumed sessions')
+    expect(lines.at(-1)).toBe('history: oldest transcript 2026-09-10, newest 2026-09-12; 1 project directory has no transcripts left (cleanupPeriodDays prunes them)')
+  })
+
+  test('renderAll with a window counts only the changes inside it', async () => {
+    const lines = renderAll(await collectAll({ since: '2026-09-11', until: null })).split('\n')
+    expect(lines[0]).toStartWith('MINOS  all projects  window 2026-09-11 to ')
+    expect(lines.find((l) => l.startsWith('/repo/a'))).toBe('/repo/a         1        0     1         0       0')
+    expect(lines).toContain('dropped 0 duplicate changes copied between forked or resumed sessions')
+  })
+
+  test('runExportAll gives the same total as the text, with the auto modes', async () => {
+    const parsed = JSON.parse((await runExportAll({ since: null, until: null })) ?? '')
+    const totalRow = renderAll(await collectAll({ since: null, until: null })).split('\n').find((l) => l.startsWith('total'))
+    const [, sessions, decided, auto, subagent, undone] = (totalRow ?? '').split(/\s+/).map(Number)
+    expect(parsed.total.sessions).toBe(sessions)
+    expect(parsed.total.changes).toEqual({ decided, auto, subagent, undone })
+    expect(parsed.total.autoModes).toEqual({ acceptEdits: 3 })
+    expect(parsed.emptyProjectDirs).toBe(1)
+  })
+
+  test('a project recorded under several paths prints its newest and says how many older ones it has', async () => {
+    const projects = join(root, 'projects', '-repo-b')
+    await writeFile(join(projects, 'moved.jsonl'), JSON.stringify({ type: 'user', uuid: 'm-u1', parentUuid: null, promptId: 'm-p1', permissionMode: 'default', timestamp: '2026-09-13T10:00:00Z', sessionId: 'moved', cwd: '/home/b', message: { content: 'go' } }))
+    // Newer than the beforeEach transcripts by mtime, whatever the clock resolution.
+    await utimes(join(projects, 'moved.jsonl'), new Date('2030-01-01'), new Date('2030-01-01'))
+    const text = renderAll(await collectAll({ since: null, until: null }))
+    expect(text).toContain('/home/b (+1 older path)')
+  })
 })

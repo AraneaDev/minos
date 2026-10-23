@@ -13,7 +13,7 @@ import { inWindow } from './window'
 import type { Window } from './window'
 
 /** Changes per label. `undone` is a count over the others, not a fourth label. */
-interface ClassCounts {
+export interface ClassCounts {
   decided: number
   auto: number
   subagent: number
@@ -21,8 +21,9 @@ interface ClassCounts {
 }
 
 /** One project's counts, or the deduplicated total over all of them. */
-interface ProjectAggregate {
+export interface ProjectAggregate {
   dir: string
+  /** For a project, its cwds in the order given (newest first from `collectAll`); for the total, sorted. */
   cwds: string[]
   /** Sessions with at least one operation, or a recorded start or end, inside the window. */
   sessions: number
@@ -128,10 +129,10 @@ class Tally {
     this.lastAt = later(this.lastAt, report.endedAt)
   }
 
-  result(dir: string): ProjectAggregate {
+  result(dir: string, sortCwds: boolean): ProjectAggregate {
     return {
       dir,
-      cwds: [...this.cwds].sort(),
+      cwds: sortCwds ? [...this.cwds].sort() : [...this.cwds],
       sessions: this.sessions,
       changes: this.changes,
       autoModes: this.autoModes,
@@ -170,13 +171,13 @@ export function aggregate(
       tally.addSession(report)
       total.addSession(report)
     }
-    projects.push(tally.result(dir))
+    projects.push(tally.result(dir, false))
   }
   projects.sort((a, b) => totalChanges(b) - totalChanges(a) || a.dir.localeCompare(b.dir))
   return {
     window,
     projects,
-    total: total.result('(all)'),
+    total: total.result('(all)', true),
     duplicatesDropped: total.duplicates,
     undatedDropped: total.undated,
     emptyProjectDirs,

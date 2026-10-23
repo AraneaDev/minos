@@ -5,6 +5,8 @@ import { findUndone } from './reverts'
 import { eachRecord } from './transcript'
 import type { Attestation, Operation, Prompt, UnknownRecord } from './types'
 import type { Undone } from './reverts'
+import { inWindow } from './window'
+import type { Window } from './window'
 
 /** One file's contribution to a total. */
 export interface FileTotals {
@@ -90,8 +92,20 @@ function delta(op: Operation): { added: number; removed: number } {
  * Reads one session and everything derived from it. Two passes over the
  * transcript: the first builds the prompt index, the second the ledger, because
  * a change can only be attributed once every prompt above it has been seen.
+ *
+ * With a window, every count and list is built from the operations inside it
+ * only. Undone detection still runs over every operation, since the change
+ * that undid something may sit on the other side of the window's edge, and a
+ * finding is kept when the change that was undone is inside the window: the
+ * same rule `aggregate` applies. `startedAt`, `endedAt` and `prompts` always
+ * describe the whole session.
  */
-export async function analyseSession(paths: { transcript: string; subagents: string[] }): Promise<SessionReport> {
+export async function analyseSession(
+  paths: { transcript: string; subagents: string[] },
+  options: { window?: Window } = {},
+): Promise<SessionReport> {
+  const window = options.window ?? { since: null, until: null }
+  const inside = (op: Operation): boolean => inWindow(op.at, window)
   const prompts = new PromptIndex()
   let sessionId = ''
   let cwd = ''
@@ -152,9 +166,12 @@ export async function analyseSession(paths: { transcript: string; subagents: str
   const seenPerLabel: Record<Attestation, Set<string>> = { decided: new Set(), auto: new Set(), subagent: new Set() }
 
   const undone: Undone[] = []
-  const perFile = ledger.byFile()
-  for (const [file, ops] of perFile) {
-    undone.push(...findUndone(file, ops, null))
+  const perFile = new Map<string, Operation[]>()
+  for (const [file, all] of ledger.byFile()) {
+    undone.push(...findUndone(file, all, null).filter((u) => inside(u.introduced)))
+    const ops = all.filter(inside)
+    if (ops.length === 0) continue
+    perFile.set(file, ops)
     for (const op of ops) {
       const d = delta(op)
       totals[op.attestation].added += d.added
@@ -172,8 +189,9 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     undoneByPrompt.set(id, (undoneByPrompt.get(id) ?? 0) + 1)
   }
 
+  const operations = ledger.operations().filter(inside)
   const byPrompt: PromptTotals[] = prompts.all().map((prompt) => {
-    const ops = ledger.operations().filter((o) => o.promptId === prompt.id)
+    const ops = operations.filter((o) => o.promptId === prompt.id)
     const files = new Set(ops.map((o) => o.file))
     const added = ops.reduce((sum, o) => sum + delta(o).added, 0)
     const removed = ops.reduce((sum, o) => sum + delta(o).removed, 0)
@@ -191,7 +209,6 @@ export async function analyseSession(paths: { transcript: string; subagents: str
     .filter((f) => f.added + f.removed > 0)
     .sort((a, b) => b.added + b.removed - (a.added + a.removed))
 
-  const operations = ledger.operations()
   const unattributedCount = operations.filter((o) => o.promptId === null).length
 
   return {
