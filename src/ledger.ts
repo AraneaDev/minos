@@ -11,18 +11,36 @@ const KINDS: Record<string, OperationKind> = {
 
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
 
-/** Shell syntax that tends to write: `sed -i`, a redirect to a file, `tee`, `mv`, `rm`. */
-const SHELL_WRITE = /\bsed\s+-i\b|(^|[^0-9&])>>?\s*[^&\s]|\btee\b|\bmv\b|\brm\b/
+/** A heredoc: the operator line is kept, the body up to its terminator is dropped. */
+const HEREDOC = /(<<-?[ \t]*(['"]?)(\w+)\2[^\n]*)\n[\s\S]*?(?:\n[ \t]*\3(?=\n|$)|$)/g
 
-/** Redirects that write nothing: to `/dev/null`, or a descriptor copy such as `2>&1`. */
-const HARMLESS_REDIRECT = /\d*>>?\s*\/dev\/null|\d*>&\d/g
+/** Single- and double-quoted strings, whose contents are code or text, not shell syntax. */
+const QUOTED = /'[^']*'|"(?:[^"\\]|\\.)*"/g
+
+/** A redirect used as a shell operator, with its target: not `=>`, `->`, `<>`, `>=` or `>&2`. */
+const REDIRECT = /(?:^|[\s;|&(])\d?>>?(?![=&])[ \t]*(\S+)/g
+
+/** `tee`, `mv` or `rm` as a command word, past any flags, with its first path token. */
+const FILE_COMMAND = /(?:^|[\s;|&(])(?:tee|mv|rm)(?:[ \t]+-\S+)*(?:[ \t]+(\S+))?/g
+
+const SED_INPLACE = /(?:^|[\s;|&(])sed[ \t]+-i\b/
+
+/** Targets outside the working tree: temp files and devices. */
+const OUTSIDE_TREE = /^["']*(?:\/tmp\/|\/dev\/|\$TMPDIR|\$\{TMPDIR)/
 
 /**
- * True when a shell command looks like it writes a file. A heuristic: a quoted
- * `>` as in `grep '>' f` reads as a redirect, and a write through an
- * interpreter (`python -c`, `node -e`) is missed.
+ * True when a shell command looks like it writes a file in the working tree.
+ * Heredoc bodies and quoted strings are removed first, so code handed to
+ * `bun -e` or `php -r` never matches. A heuristic: a write through an
+ * interpreter is missed, and so is one whose target is built in a variable.
  */
-const looksLikeWrite = (command: string): boolean => SHELL_WRITE.test(command.replace(HARMLESS_REDIRECT, ''))
+function looksLikeWrite(command: string): boolean {
+  const bare = command.replace(HEREDOC, '$1').replace(QUOTED, '""')
+  if (SED_INPLACE.test(bare)) return true
+  for (const m of bare.matchAll(REDIRECT)) if (!OUTSIDE_TREE.test(m[1] ?? '')) return true
+  for (const m of bare.matchAll(FILE_COMMAND)) if (!OUTSIDE_TREE.test(m[1] ?? '')) return true
+  return false
+}
 
 /**
  * Orders two operations by their ISO 8601 timestamp, lexicographic order

@@ -108,16 +108,16 @@ function shellWritesFor(command: string) {
   return ledger
 }
 
-test.each(['sed -i s/a/b/ f', 'echo x > f', 'echo x >> f', 'cat a | tee f', 'mv a b', 'rm f'])('a shell command that writes counts: %s', (command) => {
+test.each(['sed -i s/a/b/ f', 'echo x > f', 'echo x > src/a.ts', 'echo x >> f', 'cat a | tee out.txt', 'mv a b', 'rm f', 'rm src/old.ts', "cat > notes.md <<'EOF'\n=> x\nEOF"])('a shell command that writes counts: %s', (command) => {
   const ledger = shellWritesFor(command)
   expect(ledger.shellWrites()).toEqual([{ toolUseId: 'sh1', at: '2026-09-07T19:04:00Z', attestation: 'auto' }])
   expect(ledger.operations()).toHaveLength(0)
 })
 
-test.each(['ls 2>&1', 'cmd > /dev/null', 'cmd 2>/dev/null', 'ls'])('a shell command that only reads or discards does not count: %s', (command) => {
+test.each(['ls 2>&1', 'cmd > /dev/null', 'cmd 2>/dev/null', 'ls', 'cmd 2>&1 | grep x', "bun -e 'const f = () => x > 1'", "php -r '$a->b();'", "git log --format='%an <%ae>'", 'echo x > /tmp/a', 'rm -rf /tmp/x', 'echo x > $TMPDIR/a', 'docker run --rm img', "cat <<'EOF'\nfoo > bar\nEOF"])('a shell command that only reads or discards does not count: %s', (command) => {
   expect(shellWritesFor(command).shellWrites()).toEqual([])
 })
 
-test("grep '>' f is a known false positive: the quoted > reads as a redirect", () => {
-  expect(shellWritesFor("grep '>' f").shellWrites()).toHaveLength(1)
+test("grep '>' f no longer reads the quoted > as a redirect", () => {
+  expect(shellWritesFor("grep '>' f").shellWrites()).toEqual([])
 })
