@@ -213,3 +213,25 @@ test('a session whose only changes were decided is not called empty', () => {
   expect(ledgerDisplay(view).empty).toBeNull()
   expect(renderLedger(view)).not.toContain('No changes yet.')
 })
+
+test('lists the prompts that changed something, most recent first, with their files and a summary', () => {
+  const p = (id: string, index: number, text: string) => ({ id, index, uuid: `u${index}`, text, at: '2026-10-23T18:50:00Z', permissionMode: 'acceptEdits' })
+  const ops = [
+    op('t1', { file: '/r/a.ts', promptId: 'p1' }),
+    op('t2', { file: '/r/b.ts', promptId: 'p2' }),
+    op('t3', { file: '/r/b.ts', promptId: 'p2' }),
+  ]
+  const r = report(ops, {
+    prompts: [p('p1', 1, '\nfix the login\nand more'), p('p2', 2, 'make the mailer queue'), p('p3', 3, 'just a question')],
+    byPrompt: [
+      { prompt: p('p1', 1, '\nfix the login\nand more'), files: 1, added: 0, removed: 0, undone: 1 },
+      { prompt: p('p2', 2, 'make the mailer queue'), files: 1, added: 0, removed: 0, undone: 0 },
+      { prompt: p('p3', 3, 'just a question'), files: 0, added: 0, removed: 0, undone: 0 },
+    ],
+  })
+  const d = ledgerDisplay(buildLedgerView(r))
+  expect(d.prompts).toEqual([
+    { ref: 'prompt 2', text: 'make the mailer queue', summary: '1 file · 2 changes', files: ['b.ts'] },
+    { ref: 'prompt 1', text: 'fix the login', summary: '1 file · 1 change · 1 undone', files: ['a.ts'] },
+  ])
+})

@@ -367,11 +367,11 @@ test('export with a window dispatches and carries the window', async () => {
   expect(JSON.parse(out).window).toEqual({ since: '2026-09-07', until: null })
 })
 
-test('--json on any command but ledger and sessions exits 2 and says so', async () => {
+test('--json on any command but ledger, sessions and file exits 2 and says so', async () => {
   const errSpy = spyOn(console, 'error').mockImplementation(() => {})
   try {
     expect(await main(['report', '--json'])).toBe(2)
-    expect(errSpy).toHaveBeenCalledWith('minos: --json only applies to ledger and sessions')
+    expect(errSpy).toHaveBeenCalledWith('minos: --json only applies to ledger, sessions and file')
   } finally {
     errSpy.mockRestore()
   }

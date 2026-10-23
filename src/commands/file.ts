@@ -1,6 +1,7 @@
 import { CLOCK_WIDTH, clock } from '../clock'
 import { PROMPT_REF_WIDTH, failedNote, plural, promptRef, sanitise, sessionOrigin } from '../report'
 import { analyseSession } from '../session'
+import { fileEdits } from '../edits'
 import type { SessionPaths } from './report'
 
 /**
@@ -28,8 +29,10 @@ function matchesTarget(file: string, target: string): boolean {
  * not survive", which reads as a clean bill of health for the file rather
  * than as the truth, which is that no file by that name was found at all.
  */
-export async function runFile(paths: SessionPaths, target: string): Promise<string> {
+export async function runFile(paths: SessionPaths, target: string, json = false): Promise<string> {
   const report = await analyseSession(paths)
+  // As data: every change to the file with its diff, for a display to draw.
+  if (json) return JSON.stringify({ file: target, edits: fileEdits(report, (f) => matchesTarget(f, target)) }, null, 2)
   const ops = report.operations.filter((op) => matchesTarget(op.file, target))
   const rows = report.undone.filter((u) => matchesTarget(u.file, target))
   const failed = report.failedChanges.filter((f) => matchesTarget(f.file, target)).length

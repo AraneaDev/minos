@@ -59,6 +59,14 @@ test('file reports only the undone changes for that file, matched by suffix', as
   expect(text).toContain('reverted')
 })
 
+test('file --json gives every change to the file with its diff', async () => {
+  const data = JSON.parse(await runFile(paths, 'auth.ts', true))
+  expect(data.file).toBe('auth.ts')
+  expect(data.edits.map((e: { kind: string }) => e.kind)).toEqual(['edit', 'edit'])
+  expect(data.edits[0].diff).toContain('-redirect(a)')
+  expect(data.edits[0].diff).toContain('+redirect(b)')
+})
+
 test('file matches by trailing path segment, and says so when nothing matches', async () => {
   // 'auth.ts' is a suffix of the fixture's real path, not the whole path: this
   // guards `endsWith` specifically, not just "some" filtering.
