@@ -42,7 +42,12 @@ export async function noteUndo(
   const notes = await endedBy($, change)
   if (notes.length === 0) return ran
   const [first] = notes as [string, ...string[]]
-  await $.ui.toast(notes.length === 1 ? first : `${first} (+${notes.length - 1} more)`)
-  await addNotes($, notes)
+  // The toast and the pane are for the person; neither failing may cost the agent its result or its note.
+  try {
+    await $.ui.toast(notes.length === 1 ? first : `${first} (+${notes.length - 1} more)`)
+    await addNotes($, notes)
+  } catch {
+    // Delivery failed; the result and the note below still reach the agent.
+  }
   return { ...ran, context: [...(ran.context ?? []), ...notes] }
 }

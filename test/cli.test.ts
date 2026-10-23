@@ -417,3 +417,13 @@ test('minos undoes exits 2 on malformed stdin and prints a JSON array for a vali
     logSpy.mockRestore()
   }
 })
+
+test('--json with --all exits 2 and points at export --all', async () => {
+  const errSpy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    expect(await main(['sessions', '--all', '--json'])).toBe(2)
+    expect(errSpy).toHaveBeenCalledWith('minos: --json does not combine with --all; use minos export --all for the data')
+  } finally {
+    errSpy.mockRestore()
+  }
+})

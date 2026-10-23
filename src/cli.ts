@@ -162,6 +162,10 @@ export async function main(argv: string[], stdin?: () => Promise<string>): Promi
     console.error('minos: --json only applies to ledger and sessions')
     return 2
   }
+  if (args.includes('--json') && args.includes('--all')) {
+    console.error('minos: --json does not combine with --all; use minos export --all for the data')
+    return 2
+  }
 
   const projectFlag = flag(args, 'project')
   if (projectFlag.given && projectFlag.value === null) {

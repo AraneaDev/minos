@@ -158,7 +158,7 @@ export function ledgerDisplay(view: LedgerView): LedgerDisplay {
       endedAt: clock(u.undoneAt, view.origin),
     })),
     caveats,
-    empty: view.unaskedFiles.length === 0 && view.undone.length === 0 ? 'No changes yet.' : null,
+    empty: c.decided === 0 && view.unaskedFiles.length === 0 && view.undone.length === 0 ? 'No changes yet.' : null,
     legend: LEGEND,
   }
 }

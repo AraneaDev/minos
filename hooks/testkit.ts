@@ -14,7 +14,7 @@ export const NOTE = 'Minos: this replaced the change to src/a.ts made at 18:52 f
 type Answer = { exitCode: number; stdout?: string; stderr?: string }
 
 /** The engine beneath the plugin: a session, a CLI whose answers the test picks, and the toasts it raised. */
-export function engine(on: On, cli: (run: Run) => Answer | Error | Promise<Answer>) {
+export function engine(on: On, cli: (run: Run) => Answer | Error | Promise<Answer>, options: { toastFails?: boolean } = {}) {
   const runs: Run[] = []
   const toasts: string[] = []
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -23,6 +23,7 @@ export function engine(on: On, cli: (run: Run) => Answer | Error | Promise<Answe
   on('session.id', () => ({ value: 'sess-1' }))
   on('session.cwd', () => ({ value: '/repo' }))
   on('ui.toast', (_, e) => {
+    if (options.toastFails === true) throw new Error('no surface to toast on')
     toasts.push(String((e as { text?: string }).text ?? e))
     return { value: undefined }
   })

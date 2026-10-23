@@ -70,3 +70,15 @@ test('an empty session shows what the counts mean, and the project lists the oth
   // With changes in the session, the legend gives way to them.
   expect(paneRows(LEDGER, [], null, 100, EARLIER).some((r) => r.key === 'legend-head')).toBe(false)
 })
+
+test('flags and supplementary CJK ideographs take two cells, and the pane still fits', () => {
+  expect(cells('🇳🇱')).toBe(2)
+  expect(cells('𠮷')).toBe(2)
+  const wide = { ...LEDGER, files: [{ file: '/repo/🇳🇱/𠮷𠮷𠮷𠮷.md', shown: '🇳🇱/𠮷𠮷𠮷𠮷.md', label: 'auto' as const, changes: '1 change' }] }
+  for (const room of [44, 100]) for (const r of paneRows(wide, [], null, room)) expect(rowWidth(r)).toBe(room)
+})
+
+test('when only the file name fits, an ellipsis stands for the dropped folders', () => {
+  expect(fitPath('a/b/name.ts', 8)).toEqual({ dir: '…', name: 'name.ts' })
+  expect(fitPath('a/b/name.ts', 6)).toEqual({ dir: '', name: 'name.…' })
+})

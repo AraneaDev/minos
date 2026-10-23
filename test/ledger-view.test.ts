@@ -207,3 +207,9 @@ test('the display strings carry the report wording, and the text form is laid ou
   expect(d.empty).toBeNull()
   for (const f of d.files) expect(renderLedger(view)).toContain(f.shown)
 })
+
+test('a session whose only changes were decided is not called empty', () => {
+  const view = { ...buildLedgerView(report([])), counts: { decided: 1, auto: 0, subagent: 0, undone: 0 } }
+  expect(ledgerDisplay(view).empty).toBeNull()
+  expect(renderLedger(view)).not.toContain('No changes yet.')
+})

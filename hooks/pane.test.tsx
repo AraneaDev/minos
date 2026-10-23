@@ -31,9 +31,11 @@ const LEDGER_JSON = JSON.stringify({ text: 'unused by the pane', display: DISPLA
 const cli = (run: Run) =>
   run.argv[2] === 'sessions'
     ? { exitCode: 0, stdout: JSON.stringify({ sessions: [{ id: 'old-1', short: 'old-1', first: '2026-10-22 09:00', last: '2026-10-22 10:00', counts: { decided: 0, auto: 2, subagent: 0, undone: 0 } }] }) }
-    : run.argv[2] === 'ledger'
-    ? { exitCode: 0, stdout: LEDGER_JSON }
-    : run.argv[2] === 'file'
+    : run.argv[2] === 'ledger' && run.argv.includes('old-1')
+      ? { exitCode: 0, stdout: 'MINOS  ledger  session old-1  earlier session text\n' }
+      : run.argv[2] === 'ledger'
+        ? { exitCode: 0, stdout: LEDGER_JSON }
+        : run.argv[2] === 'file'
       ? { exitCode: 0, stdout: 'src/a.ts: 1 operation in this session\n' }
       : { exitCode: 0, stdout: '[]' }
 
@@ -100,7 +102,7 @@ test('while open, a burst of changes of every kind and a turn end become one ref
   const { runs } = engine(on, cli)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('tool.call', () => ({ result: { filePath: '/repo/a.ts' } }))
-  on('turn.complete', (_, e) => e as never)
+  on('turn.complete', () => ({ text: '', reason: 'answer', category: null, explanation: null }))
   const clock = mock.clock(on)
   await start($)
   await $.command.run(OPEN)
@@ -112,6 +114,22 @@ test('while open, a burst of changes of every kind and a turn end become one ref
   expect(ledgerRuns(runs)).toBe(opened)
   await clock.advance(1000)
   expect(ledgerRuns(runs)).toBe(opened + 1)
+  // The end of a turn asks for a refresh of its own.
+  await $.turn.complete({ answer: '', durationMs: 0, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(1000)
+  expect(ledgerRuns(runs)).toBe(opened + 2)
+})
+
+test('a malformed ledger is shown as a failure, not drawn', async ($, on) => {
+  engine(on, () => ({ exitCode: 0, stdout: JSON.stringify({ display: { session: 's', counts: null, files: [], undone: [] } }) }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const clock = mock.clock(on)
+  await start($)
+  await $.command.run(OPEN)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /could not run/ }))?.text).toContain('did not read as JSON')
+  await ui.unmount()
 })
 
 test('a refresh asked for while one runs causes exactly one more after it', async ($, on) => {
@@ -158,5 +176,6 @@ test('the pane lists the earlier sessions of the project, and pressing one shows
   expect(await ui.find({ key: 'session:old-1' })).toBeDefined()
   await ui.press({ key: 'session:old-1' })
   expect(runs.some((r) => r.argv[2] === 'ledger' && r.argv.includes('old-1'))).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /earlier session text/ })).toBeDefined()
   await ui.unmount()
 })

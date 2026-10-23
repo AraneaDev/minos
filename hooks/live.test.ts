@@ -80,3 +80,12 @@ test('the undo check never falls back to another session', async ($, on) => {
   expect(ran.context ?? []).toEqual([])
   expect(runs.filter((r) => r.argv[2] === 'undoes')).toHaveLength(1)
 })
+
+test('a toast that fails still leaves the agent its result and its note', async ($, on) => {
+  engine(on, () => ({ exitCode: 0, stdout: JSON.stringify([{ note: NOTE }]) }), { toastFails: true })
+  on('tool.call', () => ({ result: { filePath: '/repo/src/a.ts' } }))
+  await start($)
+  const ran = await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'b', new_string: 'c' })
+  expect(ran.isError).not.toBe(true)
+  expect(ran.context).toContain(NOTE)
+})

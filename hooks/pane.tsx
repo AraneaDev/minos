@@ -58,9 +58,13 @@ const EMPTY: MinosLedger = {
 /** The `display` part of the ledger JSON, or null when the output does not read as one. */
 function parseLedger(stdout: string): MinosLedger | null {
   try {
-    const d = (JSON.parse(stdout) as { display?: MinosLedger }).display
-    if (d === undefined || typeof d.counts !== 'object' || !Array.isArray(d.files) || !Array.isArray(d.undone)) return null
-    return d
+    const d = (JSON.parse(stdout) as { display?: Partial<MinosLedger> | null }).display
+    if (d === undefined || d === null || typeof d !== 'object') return null
+    const counts = d.counts
+    const isCounts = counts !== null && typeof counts === 'object' && (['decided', 'auto', 'subagent', 'undone'] as const).every((k) => typeof counts[k] === 'number')
+    const isLists = [d.files, d.undone, d.caveats, d.legend].every(Array.isArray)
+    const isText = typeof d.session === 'string' && (d.since === null || typeof d.since === 'string') && (d.empty === null || typeof d.empty === 'string')
+    return isCounts && isLists && isText ? (d as MinosLedger) : null
   } catch {
     return null
   }

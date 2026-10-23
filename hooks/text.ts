@@ -6,8 +6,8 @@
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 /** Combining marks and joiners: they draw on the cell before them. */
 const MARKS_ONLY = /^\p{M}+$/u
-/** East Asian wide characters and most emoji: two cells. */
-const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|\p{Extended_Pictographic}/u
+/** East Asian wide characters (including the supplementary ideographs), most emoji, and flags: two cells. */
+const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦\u{20000}-\u{3fffd}]|\p{Extended_Pictographic}|\p{Regional_Indicator}/u
 const ASCII = /^[\x20-\x7e]*$/
 
 const split = (text: string): string[] => Array.from(graphemes.segment(text), (s) => s.segment)
@@ -61,6 +61,8 @@ export function fitPath(path: string, width: number): { dir: string; name: strin
   const name = slash < 0 ? path : path.slice(slash + 1)
   if (cells(path) <= width) return { dir, name }
   const nameCells = cells(name)
-  if (nameCells >= width - 1) return { dir: '', name: fit(name, width) }
+  // The folders are dropped: an ellipsis says so when the cell is there for it.
+  if (nameCells === width - 1) return { dir: '…', name }
+  if (nameCells >= width) return { dir: '', name: fit(name, width) }
   return { dir: `…${tail(split(dir), width - nameCells - 1)}`, name }
 }
