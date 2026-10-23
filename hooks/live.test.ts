@@ -8,7 +8,9 @@ test('minos_ledger answers with the ledger the CLI prints for this session', asy
   const { runs } = engine(on, () => ({ exitCode: 0, stdout: 'MINOS  ledger  session sess-1\n' }))
   await start($)
   const answer = await $.tool.call({ tool: LEDGER })
-  expect(textOf(answer)).toContain('MINOS  ledger  session sess-1')
+  // The engine accepts a string, an array of blocks or nothing as a plugin tool's result; an object is refused.
+  expect(typeof answer.result).toBe('string')
+  expect(answer.result).toContain('MINOS  ledger  session sess-1')
   expect(runs[0]!.argv[0]).toBe('bun')
   expect(runs[0]!.argv.slice(2)).toEqual(['ledger', '--session', 'sess-1', '--project', '/repo'])
 })
@@ -17,9 +19,9 @@ test('minos_ledger says in words why Minos could not run', async ($, on) => {
   engine(on, () => new Error('spawn bun ENOENT'))
   await start($)
   // A run that rejects reaches the plugin as a rejection; its wording is the engine's, so only the frame is pinned.
-  const text = textOf(await $.tool.call({ tool: LEDGER }))
-  expect(text).toContain('Minos could not read this session: ')
-  expect(text).not.toContain('"isError":true')
+  const answer = await $.tool.call({ tool: LEDGER })
+  expect(typeof answer.result).toBe('string')
+  expect(answer.result).toContain('Minos could not read this session: ')
 })
 
 test("an unknown session id falls back to the project's newest session", async ($, on) => {

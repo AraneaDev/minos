@@ -24,6 +24,7 @@ export function serveLedgerTool(on: On): void {
   on('tool.call', { tool: `mcp__minos__${LEDGER_TOOL}` }, async ($) => {
     const run = await forSession($, ['ledger'])
     const text = run.ok ? run.stdout.trimEnd() : `Minos could not read this session: ${run.error}`
-    return { result: { content: [{ type: 'text', text }], isError: false } }
+    // A plugin's own tool answers with its text; the engine wraps it for the model.
+    return { result: text }
   })
 }
