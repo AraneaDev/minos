@@ -145,6 +145,9 @@ export function renderAll(a: Aggregate): string {
   if (a.undatedDropped > 0) {
     out.push(`left out ${plural(a.undatedDropped, 'change', 'changes')} with no readable timestamp, which no window can place`)
   }
+  if (a.failedDropped > 0) {
+    out.push(`left out ${plural(a.failedDropped, 'change', 'changes')} whose tool call failed or was refused, so nothing was written`)
+  }
   if (a.total.changes.decided > 0) out.push(DECIDED_NOTE)
   if (a.unreadableSkipped > 0) out.push(`skipped ${plural(a.unreadableSkipped, 'unreadable transcript', 'unreadable transcripts')}`)
   out.push(

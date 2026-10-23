@@ -245,7 +245,23 @@ export class Ledger {
    * order and cannot be relied on here either.
    */
   operations(): Operation[] {
-    return [...this.ops].sort(byTimestamp)
+    return this.landed().sort(byTimestamp)
+  }
+
+  /**
+   * Edits and writes whose tool result was an error or a refusal, so nothing
+   * reached the file. They are kept out of `operations` and `byFile`, since
+   * counting them would report a change that never happened and could read
+   * as undoing one that did; they are returned here so a report can say how
+   * many it left out.
+   */
+  failedOperations(): Operation[] {
+    return this.ops.filter((op) => this.failed.has(op.toolUseId)).sort(byTimestamp)
+  }
+
+  /** The operations whose tool call did not fail, in observation order. */
+  private landed(): Operation[] {
+    return this.ops.filter((op) => !this.failed.has(op.toolUseId))
   }
 
   /**
@@ -257,7 +273,7 @@ export class Ledger {
    */
   byFile(): Map<string, Operation[]> {
     const grouped = new Map<string, Operation[]>()
-    for (const op of this.ops) {
+    for (const op of this.landed()) {
       const list = grouped.get(op.file)
       if (list === undefined) grouped.set(op.file, [op])
       else list.push(op)

@@ -62,6 +62,8 @@ export interface Aggregate {
   duplicatesDropped: number
   /** Operations with no parseable timestamp, dropped only when a window is set. */
   undatedDropped: number
+  /** Edits and writes whose tool call failed or was refused, left out of every count. */
+  failedDropped: number
   /** Sessions whose transcript could not be read and were left out. */
   unreadableSkipped: number
   /** Project directories with no transcript left. */
@@ -101,7 +103,9 @@ class Tally {
   duplicates = 0
   undated = 0
   undatedShell = 0
+  failed = 0
   private readonly seen = new Set<string>()
+  private readonly seenFailed = new Set<string>()
   private readonly seenShell = new Set<string>()
   private readonly seenUndone = new Set<string>()
 
@@ -145,6 +149,11 @@ class Tally {
     for (const op of report.operations) this.add(op)
     for (const w of report.shellWrites) this.addShellWrite(w)
     for (const u of report.undone) this.addUndone(u)
+    for (const f of report.failedChanges) {
+      if (this.seenFailed.has(f.toolUseId)) continue
+      this.seenFailed.add(f.toolUseId)
+      if (inWindow(f.at, this.window)) this.failed++
+    }
     const touched = report.operations.some((o) => inWindow(o.at, this.window))
     // A session counts when its span overlaps the window, even with no change
     // inside it, but only when at least one end of that span is known.
@@ -218,6 +227,7 @@ export function aggregate(
     total: total.result('(all)', true),
     duplicatesDropped: total.duplicates,
     undatedDropped: total.undated,
+    failedDropped: total.failed,
     unreadableSkipped,
     emptyProjectDirs,
     oldestTranscript: oldest,

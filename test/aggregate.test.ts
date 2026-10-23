@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { aggregate } from '../src/aggregate'
+import { renderAll } from '../src/commands/all'
 import type { SessionReport } from '../src/session'
 import type { Attestation, Operation } from '../src/types'
 import type { Window } from '../src/window'
@@ -44,6 +45,7 @@ function report(operations: Operation[], over: Partial<SessionReport> = {}): Ses
     shellWrites: [],
     undatedDropped: 0,
     undatedShellWrites: 0,
+    failedChanges: [],
     ...over,
   }
 }
@@ -228,4 +230,20 @@ test('an undone change with no readable timestamp is not counted under a window'
   const r = report([intro, undoneBy], { undone: [finding], startedAt: '2026-09-22T10:00:00Z' })
   expect(one([r], { since: '2026-09-01', until: null }).total.changes.undone).toBe(0)
   expect(one([r]).total.changes.undone).toBe(1)
+})
+
+test('counts failed changes apart, once by tool_use id, inside the window', () => {
+  const failed = [
+    { toolUseId: 'f1', at: '2026-09-22T10:00:00Z' },
+    { toolUseId: 'f2', at: '2026-09-21T10:00:00Z' },
+  ]
+  const a = one([report([], { failedChanges: failed }), report([], { failedChanges: [failed[0]!] })], { since: '2026-09-22', until: null })
+  expect(a.failedDropped).toBe(1)
+  expect(a.total.changes).toEqual({ decided: 0, auto: 0, subagent: 0, undone: 0 })
+})
+
+test('renderAll says how many failed changes it left out, and nothing when there are none', () => {
+  const failed = report([], { failedChanges: [{ toolUseId: 'f1', at: '2026-09-22T10:00:00Z' }] })
+  expect(renderAll(one([failed]))).toContain('left out 1 change whose tool call failed or was refused, so nothing was written')
+  expect(renderAll(one([report([op('t1')])]))).not.toContain('failed or was refused')
 })

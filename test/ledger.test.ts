@@ -200,3 +200,22 @@ test('quote stripping is linear: a long run of escaped quotes finishes fast', ()
   expect(shellWritesFor(`echo "${'\\a'.repeat(50_000)}`).shellWrites()).toEqual([])
   expect(performance.now() - started).toBeLessThan(1000)
 })
+
+test('an edit whose tool call failed is left out of the changes and returned as failed', () => {
+  const prompts = new PromptIndex()
+  const ledger = new Ledger()
+  const failure = {
+    type: 'user',
+    uuid: 'r1',
+    parentUuid: 'a1',
+    timestamp: '2026-09-07T19:02:01Z',
+    message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'String to replace not found in file.' }] },
+  }
+  for (const r of [prompt, edit, failure]) {
+    prompts.observe(r)
+    ledger.observe(r, prompts)
+  }
+  expect(ledger.operations()).toEqual([])
+  expect([...ledger.byFile().keys()]).toEqual([])
+  expect(ledger.failedOperations().map((o) => o.toolUseId)).toEqual(['t1'])
+})

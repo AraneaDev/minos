@@ -80,6 +80,12 @@ export interface SessionReport {
   undatedDropped: number
   /** Shell writes left out of `shellWrites` for the same reason; 0 with no window. */
   undatedShellWrites: number
+  /**
+   * Edits and writes inside the window whose tool call failed or was refused,
+   * so nothing changed. They are in no other count; each carries its tool_use
+   * id so an aggregate can count a forked copy once.
+   */
+  failedChanges: { toolUseId: string; at: string }[]
 }
 
 const lines = (text: string | null): number => {
@@ -239,5 +245,9 @@ export async function analyseSession(
     shellWrites: shellWrites.filter((w) => inWindow(w.at, window)),
     undatedDropped: everyOperation.filter((o) => undated(o.at)).length,
     undatedShellWrites: shellWrites.filter((w) => undated(w.at)).length,
+    failedChanges: ledger
+      .failedOperations()
+      .filter(inside)
+      .map((o) => ({ toolUseId: o.toolUseId, at: o.at })),
   }
 }
