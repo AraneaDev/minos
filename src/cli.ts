@@ -13,10 +13,10 @@ import type { Window } from './window'
 
 const COMMANDS = ['report', 'file', 'undone', 'sessions', 'export', 'ledger', 'undoes'] as const
 
-const FLAG_NAMES = ['project', 'session', 'limit', 'since', 'until'] as const
+const FLAG_NAMES = ['project', 'session', 'limit', 'since', 'until', 'exclude'] as const
 
 /** Flags that take no value. Kept apart from FLAG_NAMES, whose entries consume the argument after them. */
-const BARE_FLAGS = ['all', 'json'] as const
+const BARE_FLAGS = ['all', 'json', 'include-temp'] as const
 
 /**
  * Usage text for `--help`/`-h`, naming the real commands and only the flags
@@ -29,14 +29,16 @@ const USAGE = `minos: reports what a Claude Code session changed, and which of i
   minos file <path> [--session <id>] [--project <path>] [--json]   one file's operation history in the session
   minos undone [--session <id>] [--project <path>]   the undone changes on their own
   minos sessions [--limit <n>] [--project <path>] [--json]     sessions with headline counts, to pick one
-  minos sessions --all                                every project, with totals
+  minos sessions --all [--exclude <glob>]... [--include-temp]   every project, with totals
   minos export [--session <id>] [--project <path>]    the ledger as data
-  minos export --all                                  every project's counts as data
+  minos export --all [--exclude <glob>]... [--include-temp]     every project's counts as data
   minos ledger [--session <id>] [--project <path>] [--json]   what changed without being asked, as text or data
   minos undoes [--session <id>] [--project <path>]   reads one Edit or Write as JSON on stdin, prints the earlier changes it ends
 
   --since <YYYY-MM-DD> and --until <YYYY-MM-DD> bound sessions, export and --all
-  to local calendar days, both inclusive.`
+  to local calendar days, both inclusive. --all leaves out a project whose every
+  recorded path matches an --exclude glob, or lies under the temp directory
+  unless --include-temp is given.`
 
 /**
  * A flag as it was typed: absent altogether, or present with the value that
@@ -137,6 +139,17 @@ function show(text: string): void {
   console.log(paint(text, colourEnabled({ isTTY: process.stdout.isTTY === true, env: process.env })))
 }
 
+/** Every value given for a flag that may be repeated, or null when one of them is missing its value. */
+function flagValues(argv: string[], name: string): string[] | null {
+  const values: string[] = []
+  for (let at = argv.indexOf(`--${name}`); at !== -1; at = argv.indexOf(`--${name}`, at + 1)) {
+    const next = argv[at + 1]
+    if (next === undefined || next.startsWith('--')) return null
+    values.push(next)
+  }
+  return values
+}
+
 /** Entry point. Returns the exit code rather than calling exit, so it is testable. */
 export async function main(argv: string[], stdin?: () => Promise<string>): Promise<number> {
   // Checked before any command dispatch: a leading flag is not a recognised
@@ -193,6 +206,11 @@ export async function main(argv: string[], stdin?: () => Promise<string>): Promi
     return 2
   }
 
+  if (!args.includes('--all') && (args.includes('--exclude') || args.includes('--include-temp'))) {
+    console.error('minos: --exclude and --include-temp work with --all')
+    return 2
+  }
+
   // --all is checked before anything resolves a project: it reads the whole
   // store, so a flag naming one project or session would be silently ignored.
   if (args.includes('--all')) {
@@ -208,7 +226,13 @@ export async function main(argv: string[], stdin?: () => Promise<string>): Promi
       console.error('minos: --all lists every project, so it takes no --limit')
       return 2
     }
-    const out = command === 'export' ? await runExportAll(window) : await runAll(window)
+    const exclude = flagValues(args, 'exclude')
+    if (exclude === null) {
+      console.error('minos: --exclude needs a glob')
+      return 2
+    }
+    const filter = { exclude, includeTemp: args.includes('--include-temp') }
+    const out = command === 'export' ? await runExportAll(window, filter) : await runAll(window, filter)
     if (out === null) {
       console.error(`minos: no transcripts found under ${claudeHome()}/projects`)
       return 1

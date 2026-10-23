@@ -81,9 +81,9 @@ export function ruleRow(key: string, glyph: string, title: string, note: string,
 /** The four counts as one framed band of tiles, or one summary line when narrow. */
 export function tileRows(counts: MinosLedger['counts'], room: number, tier: Tier): Row[] {
   const tiles = [
-    { key: 'decided', value: counts.decided, label: 'decided', unit: 'files' },
-    { key: 'auto', value: counts.auto, label: 'auto', unit: 'files' },
-    { key: 'subagent', value: counts.subagent, label: 'subagent', unit: 'files' },
+    { key: 'decided', value: counts.decided, label: 'decided', unit: 'changes' },
+    { key: 'auto', value: counts.auto, label: 'auto', unit: 'changes' },
+    { key: 'subagent', value: counts.subagent, label: 'subagent', unit: 'changes' },
     { key: 'undone', value: counts.undone, label: 'undone', unit: 'changes' },
   ] as const
   const figure = (t: (typeof tiles)[number]): Segment => ({ text: String(t.value), bold: true, ...(t.value > 0 ? { color: HUE[t.key] } : { dim: true }) })

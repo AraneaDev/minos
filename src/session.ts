@@ -31,7 +31,8 @@ export interface SessionReport {
   cwd: string
   branch: string
   prompts: Prompt[]
-  totals: Record<Attestation, { files: number; added: number; removed: number }>
+  /** Per label: the files it touched, its changes (one Edit, Write or NotebookEdit call each), and their lines. */
+  totals: Record<Attestation, { files: number; changes: number; added: number; removed: number }>
   undone: Undone[]
   unrecognisedModes: string[]
   skippedLines: number
@@ -171,12 +172,15 @@ export async function analyseSession(
     skippedLines += stats.skipped
   }
 
-  const totals: Record<Attestation, { files: number; added: number; removed: number }> = {
-    decided: { files: 0, added: 0, removed: 0 },
-    auto: { files: 0, added: 0, removed: 0 },
-    subagent: { files: 0, added: 0, removed: 0 },
+  const totals: Record<Attestation, { files: number; changes: number; added: number; removed: number }> = {
+    decided: { files: 0, changes: 0, added: 0, removed: 0 },
+    auto: { files: 0, changes: 0, added: 0, removed: 0 },
+    subagent: { files: 0, changes: 0, added: 0, removed: 0 },
   }
   const seenPerLabel: Record<Attestation, Set<string>> = { decided: new Set(), auto: new Set(), subagent: new Set() }
+  // Changes count once per tool_use id, as `minos sessions --all` counts them,
+  // so a record a transcript holds twice cannot make the two disagree.
+  const counted = new Set<string>()
 
   const undone: Undone[] = []
   const perFile = new Map<string, Operation[]>()
@@ -187,6 +191,8 @@ export async function analyseSession(
     perFile.set(file, ops)
     for (const op of ops) {
       const d = delta(op)
+      if (!counted.has(op.toolUseId)) totals[op.attestation].changes++
+      counted.add(op.toolUseId)
       totals[op.attestation].added += d.added
       totals[op.attestation].removed += d.removed
       seenPerLabel[op.attestation].add(file)

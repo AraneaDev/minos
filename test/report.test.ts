@@ -1,7 +1,8 @@
+import { CHANGES_NOTE } from '../src/caveats'
 import { expect, test } from 'bun:test'
 import { join } from 'node:path'
 import { analyseSession } from '../src/session'
-import { renderReport, sanitise } from '../src/report'
+import { middlePath, renderReport, sanitise } from '../src/report'
 import { FIXTURE_DIR } from '../scripts/make-fixtures'
 import type { Operation } from '../src/types'
 
@@ -150,15 +151,18 @@ test('pluralisation agrees with the count instead of always reading as plural', 
 test('the per-label rows sign the added count, matching the applied-without-asking rows', async () => {
   const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
   const text = renderReport(report)
-  expect(text).toMatch(/decided\s+1 file\s+\+\s*1\s+-\s*1/)
+  expect(text).toMatch(/decided\s+1 change\s+\+\s*1\s+-\s*1/)
 })
 
-// Polish: CHANGED's file count and the three label rows below it are not
-// mutually exclusive by design, and the report says so in one line.
-test('CHANGED explains that the rows below it can overlap', async () => {
+// The label rows count changes, as `sessions` and `--all` do: each change has
+// one label, so the rows add up to the change count CHANGED gives.
+test('CHANGED gives files and changes, and the label rows add up to its change count', async () => {
   const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
-  const text = renderReport(report)
-  expect(text.toLowerCase()).toContain('overlap')
+  const lines = renderReport(report).split('\n')
+  expect(lines[3]).toBe('CHANGED  2 files, 3 changes, +3 / -2')
+  expect(lines[4]).toBe(`  (${CHANGES_NOTE}; each change has one label below)`)
+  const rows = lines.filter((l) => /^ {2}(decided|auto|subagent) +\d/.test(l)).map((l) => Number(l.trim().split(/\s+/)[1]))
+  expect(rows.reduce((a, b) => a + b, 0)).toBe(3)
 })
 
 // Finding 7: the +/- figures print in `git diff --stat` shape but are not
@@ -331,7 +335,7 @@ test('the caveat still prints, without a rule list, when settings could not be r
 
 test('no allow-rule caveat is printed when decided covers zero files', async () => {
   const report = await analyseSession({ transcript: join(FIXTURE_DIR, 'session.jsonl'), subagents: [] })
-  const zeroDecided = { ...report, totals: { ...report.totals, decided: { files: 0, added: 0, removed: 0 } } }
+  const zeroDecided = { ...report, totals: { ...report.totals, decided: { files: 0, changes: 0, added: 0, removed: 0 } } }
   const text = renderReport(zeroDecided, { allowRules: ['Edit(src/**)'] })
   expect(text.toLowerCase()).not.toContain('allow rule')
 })
@@ -395,9 +399,9 @@ test('a five-digit line count keeps the columns after it aligned', async () => {
   const wide = {
     ...report,
     totals: {
-      decided: { files: 0, added: 0, removed: 0 },
-      auto: { files: 12, added: 3785, removed: 70 },
-      subagent: { files: 197, added: 39839, removed: 4900 },
+      decided: { files: 0, changes: 0, added: 0, removed: 0 },
+      auto: { files: 12, changes: 40, added: 3785, removed: 70 },
+      subagent: { files: 197, changes: 1203, added: 39839, removed: 4900 },
     },
   }
   const text = renderReport(wide)
@@ -424,4 +428,13 @@ test('changes whose tool call failed are named in one line, and a report with no
   expect(text.split('\n')).toContain('  Left out 2 changes whose tool call failed or was refused, so nothing was written.')
   expect(renderReport({ ...report, failedChanges: failed.slice(0, 1) })).toContain('  Left out 1 change whose tool call failed')
   expect(text.split('\n').filter((l) => !l.startsWith('  Left out')).join('\n')).toBe(clean)
+})
+
+test('middlePath keeps the first segments and the last ones, and falls back to a front cut when even those do not fit', () => {
+  expect(middlePath('/tmp/claude-1002/-home-tim-x/54c0-4772-87d2-40cc18c84ceb/scratchpad/live-try', 40)).toBe('/tmp/claude-1002/…/scratchpad/live-try')
+  expect(middlePath('/a/b', 40)).toBe('/a/b')
+  expect(middlePath('/home/tim/projects/deep/repo', 22)).toBe('/home/tim/…/deep/repo')
+  // Two leading segments and the last do not fit, one and the last do.
+  expect(middlePath('/home/somebody-long/projects/deep/repo', 22)).toBe('/home/…/deep/repo')
+  expect(middlePath(`/${'x'.repeat(50)}`, 20)).toBe(`…${'x'.repeat(19)}`)
 })

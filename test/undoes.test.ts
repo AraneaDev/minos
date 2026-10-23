@@ -37,9 +37,9 @@ function report(operations: Operation[]): SessionReport {
     branch: 'main',
     prompts: [{ id: 'p2', index: 2, uuid: 'x', text: 'go', at: '2026-10-23T18:50:00Z', permissionMode: 'acceptEdits' }],
     totals: {
-      decided: { files: 0, added: 0, removed: 0 },
-      auto: { files: 0, added: 0, removed: 0 },
-      subagent: { files: 0, added: 0, removed: 0 },
+      decided: { files: 0, changes: 0, added: 0, removed: 0 },
+      auto: { files: 0, changes: 0, added: 0, removed: 0 },
+      subagent: { files: 0, changes: 0, added: 0, removed: 0 },
     },
     undone: [],
     unrecognisedModes: [],

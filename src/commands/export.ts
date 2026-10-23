@@ -1,6 +1,6 @@
 import { analyseSession } from '../session'
 import type { Window } from '../window'
-import { collectAll } from './all'
+import { collectAll, type ProjectFilter } from './all'
 import type { SessionPaths } from './report'
 
 /**
@@ -24,7 +24,7 @@ export async function runExport(paths: SessionPaths, window: Window = { since: n
  * prints. Null when the store holds no transcript at all, so the caller
  * reports that on stderr rather than printing an empty aggregate as data.
  */
-export async function runExportAll(window: Window): Promise<string | null> {
-  const all = await collectAll(window)
-  return all.projects.length === 0 ? null : JSON.stringify(all, null, 2)
+export async function runExportAll(window: Window, filter?: ProjectFilter): Promise<string | null> {
+  const all = await collectAll(window, filter)
+  return all.projects.length === 0 && all.tempSkipped + all.excludedSkipped === 0 ? null : JSON.stringify(all, null, 2)
 }

@@ -13,7 +13,7 @@ const PANE = {
 /** The `/minos` command as a person runs it at the terminal prompt. */
 const OPEN = { command: 'minos', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 160 } } as const
 
-const UNITS = '(decided, auto and subagent count files; undone counts changes)'
+const UNITS = 'counts are changes: one Edit, Write or NotebookEdit tool call each, deduplicated by tool_use id'
 const DISPLAY = {
   session: 'sess-1',
   since: '2026-10-23 18:50',

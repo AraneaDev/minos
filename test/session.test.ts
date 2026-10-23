@@ -266,7 +266,7 @@ test('a failed Edit is out of the totals, the operations and undone, and its fai
       const paths = { transcript: path('main.jsonl'), subagents: [] }
       const open = await analyseSession(paths)
       expect(open.operations.map((o) => o.toolUseId)).toEqual(['t-a1', 't-a3'])
-      expect(open.totals.decided).toEqual({ files: 1, added: 2, removed: 1 })
+      expect(open.totals.decided).toEqual({ files: 1, changes: 2, added: 2, removed: 1 })
       expect(open.undone).toEqual([])
       expect(open.failedChanges).toEqual([{ toolUseId: 't-a2', at: '2026-09-07T09:02:00Z', file: '/repo/a.ts' }])
       expect(await runUndone(paths)).toContain('Left out 1 change whose tool call failed or was refused, so nothing was written.')

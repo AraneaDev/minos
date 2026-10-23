@@ -1,4 +1,4 @@
-import { DECIDED_NOTE } from './caveats'
+import { CHANGES_NOTE, DECIDED_NOTE } from './caveats'
 import { clock, localStamp } from './clock'
 import { failedNote, pathCol, plural, promptRef, sanitise, sessionOrigin } from './report'
 import type { UndoneKind } from './reverts'
@@ -31,7 +31,7 @@ export interface LedgerView {
   /** What every `+Nd` suffix counts from: the first prompt, as `minos report` counts it. */
   origin: string
   startedAt: string | null
-  /** Files per class and undone in changes, as `minos sessions` counts them. */
+  /** Changes per class and undone, as `minos sessions` counts them. */
   counts: { decided: number; auto: number; subagent: number; undone: number }
   /** Auto and subagent files, most recent change first. */
   unaskedFiles: LedgerFile[]
@@ -82,9 +82,9 @@ export function buildLedgerView(report: SessionReport): LedgerView {
     origin: sessionOrigin(report),
     startedAt: report.startedAt,
     counts: {
-      decided: report.totals.decided.files,
-      auto: report.totals.auto.files,
-      subagent: report.totals.subagent.files,
+      decided: report.totals.decided.changes,
+      auto: report.totals.auto.changes,
+      subagent: report.totals.subagent.changes,
       undone: report.undone.length,
     },
     unaskedFiles: [...byFile.values()].sort((a, b) => when(b.lastAt) - when(a.lastAt)),
@@ -133,8 +133,6 @@ const LEGEND = [
   'undone    made and then ended later in the same session',
 ]
 
-/** The units line under the counts. */
-const UNITS = '(decided, auto and subagent count files; undone counts changes)'
 
 /**
  * Every word, number and time a display of the ledger shows, already written
@@ -168,7 +166,7 @@ export function ledgerDisplay(view: LedgerView): LedgerDisplay {
     session: sanitise(view.sessionId).slice(0, 8),
     since: view.origin === '' ? null : localStamp(view.origin),
     counts: c,
-    units: UNITS,
+    units: CHANGES_NOTE,
     files: view.unaskedFiles.map((f) => ({
       file: f.file,
       shown: sanitise(shown(f.file, view.cwd)),

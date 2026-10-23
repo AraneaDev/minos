@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { DECIDED_NOTE } from '../src/caveats'
+import { CHANGES_NOTE, DECIDED_NOTE } from '../src/caveats'
 import { buildLedgerView, ledgerDisplay, ledgerLines, renderLedger } from '../src/ledger-view'
 import type { SessionReport } from '../src/session'
 import type { Attestation, Operation } from '../src/types'
@@ -33,15 +33,16 @@ function op(id: string, over: Partial<Operation> = {}): Operation {
 
 function report(operations: Operation[], over: Partial<SessionReport> = {}): SessionReport {
   const files = (label: Attestation) => new Set(operations.filter((o) => o.attestation === label).map((o) => o.file)).size
+  const changes = (label: Attestation) => operations.filter((o) => o.attestation === label).length
   return {
     sessionId: '1a2b3c4d-0000',
     cwd: '/r',
     branch: 'main',
     prompts: [],
     totals: {
-      decided: { files: files('decided'), added: 0, removed: 0 },
-      auto: { files: files('auto'), added: 0, removed: 0 },
-      subagent: { files: files('subagent'), added: 0, removed: 0 },
+      decided: { files: files('decided'), changes: changes('decided'), added: 0, removed: 0 },
+      auto: { files: files('auto'), changes: changes('auto'), added: 0, removed: 0 },
+      subagent: { files: files('subagent'), changes: changes('subagent'), added: 0, removed: 0 },
     },
     undone: [],
     unrecognisedModes: [],
@@ -73,7 +74,7 @@ const sample = (): SessionReport => {
 
 test('builds counts in the same units as minos sessions', () => {
   const view = buildLedgerView(sample())
-  expect(view.counts).toEqual({ decided: 0, auto: 1, subagent: 1, undone: 1 })
+  expect(view.counts).toEqual({ decided: 0, auto: 2, subagent: 1, undone: 1 })
   expect(view.sessionId).toBe('1a2b3c4d-0000')
   expect(view.decidedNote).toBe(DECIDED_NOTE)
   expect(view.undone).toEqual([
@@ -99,8 +100,8 @@ test('renders the counts, the units line, the file list and the undone list', ()
   const text = renderLedger(buildLedgerView(sample()))
   // Since the first prompt, the origin minos report counts from, not the first record.
   expect(text).toContain('MINOS  ledger  session 1a2b3c4d  since 2026-10-23 18:50')
-  expect(text).toContain('decided 0  auto 1  subagent 1  undone 1')
-  expect(text).toContain('(decided, auto and subagent count files; undone counts changes)')
+  expect(text).toContain('decided 0  auto 2  subagent 1  undone 1')
+  expect(text).toContain(CHANGES_NOTE)
   expect(text).toContain('changed without being asked')
   expect(text).toMatch(/^ {2}b\.ts\s+subagent\s+1 change$/m)
   expect(text).toMatch(/^ {2}a\.ts\s+auto\s+2 changes$/m)
@@ -111,7 +112,7 @@ test('renders the counts, the units line, the file list and the undone list', ()
 test('renders zeros, the units line and no file list for a session with no changes', () => {
   const text = renderLedger(buildLedgerView(report([])))
   expect(text).toContain('decided 0  auto 0  subagent 0  undone 0')
-  expect(text).toContain('(decided, auto and subagent count files; undone counts changes)')
+  expect(text).toContain(CHANGES_NOTE)
   expect(text).not.toContain('changed without being asked')
   expect(text).not.toContain('did not survive')
   expect(text).not.toContain('since')
@@ -168,12 +169,12 @@ test('keeps absolute files and the cwd in the data', () => {
   expect(view.unaskedFiles[0]?.file).toBe('/r/src/a.ts')
 })
 
-test('truncates a long undone path with the ellipsis', () => {
+test('truncates a long undone path in the middle, keeping its start and its file', () => {
   const file = `/r/${'deep/'.repeat(12)}file.ts`
   const a = op('t1', { file })
   const b = op('t2', { file })
   const text = renderLedger(buildLedgerView(report([a, b], { undone: [{ file, kind: 'reverted', line: null, introduced: a, undoneBy: b }] })))
-  expect(text).toMatch(/^ {2}….*file\.ts +reverted/m)
+  expect(text).toMatch(/^ {2}deep\/deep\/…\/(deep\/)*file\.ts +reverted/m)
   expect(text).not.toContain(file)
 })
 
@@ -193,7 +194,7 @@ test('says No changes yet. for a session that changed nothing', () => {
 
 test('names the lines a display should draw quietly', () => {
   const { dim } = ledgerLines({ ...buildLedgerView(sample()), counts: { decided: 1, auto: 0, subagent: 0, undone: 0 }, failedChanges: 1 })
-  expect(dim).toContain('(decided, auto and subagent count files; undone counts changes)')
+  expect(dim).toContain(CHANGES_NOTE)
   expect(dim.some((l) => l.startsWith('decided is inferred'))).toBe(true)
   expect(dim.some((l) => l.startsWith('Left out 1 change'))).toBe(true)
 })

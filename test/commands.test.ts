@@ -12,7 +12,7 @@ import { localDate, localStamp } from '../src/clock'
 import type { Window } from '../src/window'
 import { runExport, runExportAll } from '../src/commands/export'
 import { collectAll, renderAll } from '../src/commands/all'
-import { DECIDED_NOTE } from '../src/caveats'
+import { CHANGES_NOTE, DECIDED_NOTE } from '../src/caveats'
 import { main } from '../src/cli'
 import { encodeProjectSlug } from '../src/paths'
 import { FIXTURE_DIR } from '../scripts/make-fixtures'
@@ -43,7 +43,7 @@ test('ledger text and json agree on the counts, and json parses', async () => {
   for (const f of view.unaskedFiles) expect(text).toContain(f.file.replace(`${view.cwd}/`, ''))
   // The JSON carries the very text the command prints, and the lines a display dims.
   expect(view.text).toBe(text)
-  expect(view.dim).toContain('(decided, auto and subagent count files; undone counts changes)')
+  expect(view.dim).toContain(CHANGES_NOTE)
 })
 
 test('export emits parseable json carrying the totals', async () => {
@@ -334,15 +334,14 @@ describe('commands that resolve a session against the transcript store', () => {
 
     const full = await runSessions(cwd, 10, OPEN)
     expect(full).not.toBeNull()
-    const lines = (full ?? '').split('\n').slice(2)
-    expect(lines.length).toBe(2)
+    const lines = (full ?? '').split('\n').slice(2, 4)
     expect(lines[0]).toEndWith('        1     0         0       0')
-    expect(lines[1]).toEndWith('        0     1         0       1')
+    expect(lines[1]).toEndWith('        0     2         0       1')
     expect(lines[0]!.startsWith('sess-001')).toBe(true)
     expect(lines[1]!.startsWith('sess-002')).toBe(true)
 
     const limited = await runSessions(cwd, 1, OPEN)
-    expect((limited ?? '').split('\n').slice(2)).toEqual([lines[1]!])
+    expect((limited ?? '').split('\n')[2]).toBe(lines[1]!)
   })
 
   /** Two sessions, one on 09-01 and one on 09-02, plus a third on 09-03. */
@@ -363,9 +362,31 @@ describe('commands that resolve a session against the transcript store', () => {
     const cwd = '/root/fake-project-sessions-units'
     await threeSessions(cwd)
     const lines = ((await runSessions(cwd, 10, OPEN)) ?? '').split('\n')
-    expect(lines[0]).toBe('session   first             last              decided  auto  subagent  undone')
-    expect(lines[1]).toBe('          (decided, auto and subagent count files; undone counts changes)')
+    expect(lines[0]).toBe(CHANGES_NOTE)
+    expect(lines[1]).toBe('session   first             last              decided  auto  subagent  undone')
     expect(lines[3]).toContain(`${localStamp('2026-09-02T10:00:00Z')}  ${localStamp('2026-09-02T10:02:00Z')}`)
+  })
+
+  test('sessions totals the shown rows with auto by mode, and says when the limit left transcripts unread', async () => {
+    const cwd = '/root/fake-project-sessions-total'
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    for (const [id, day, mode] of [['mode-001', '01', 'acceptEdits'], ['mode-002', '02', 'auto'], ['mode-003', '03', 'auto']] as const) {
+      const lines = [
+        { type: 'user', uuid: `${id}-u`, parentUuid: null, promptId: `${id}-p`, permissionMode: mode, timestamp: `2026-09-${day}T10:00:00Z`, sessionId: id, cwd, message: { content: 'hi' } },
+        { type: 'assistant', uuid: `${id}-a`, parentUuid: `${id}-u`, timestamp: `2026-09-${day}T10:02:00Z`, isSidechain: false, message: { content: [{ type: 'tool_use', id: `${id}-t`, name: 'Write', input: { file_path: '/repo/a.ts', content: `${id}\n` } }] } },
+      ]
+      await writeFile(join(projectDir, `${id}.jsonl`), lines.map((r) => JSON.stringify(r)).join('\n'))
+    }
+    const all = ((await runSessions(cwd, 10, OPEN)) ?? '').split('\n')
+    expect(all.find((l) => l.startsWith('total'))?.split(/\s+/)).toEqual(['total', '0', '3', '0', '0'])
+    expect(all).toContain('auto by mode: auto 2, acceptEdits 1')
+    expect(all.some((l) => l.includes('not read'))).toBe(false)
+    const limited = ((await runSessions(cwd, 2, OPEN)) ?? '').split('\n')
+    expect(limited.at(-1)).toBe('the total covers the sessions shown; 1 older transcript was not read (raise --limit to count them)')
+    const data = JSON.parse((await runSessions(cwd, 2, OPEN, true)) ?? 'null')
+    expect(data.total.changes).toEqual({ decided: 0, auto: 2, subagent: 0, undone: 0 })
+    expect(data.unreadTranscripts).toBe(1)
   })
 
   test('sessions --json gives the same rows as data, newest last', async () => {
@@ -418,7 +439,7 @@ describe('commands that resolve a session against the transcript store', () => {
     const cwd = '/root/fake-project-one-path'
     await threeSessions(cwd)
     const lines = ((await runSessions(cwd, 10, OPEN)) ?? '').split('\n')
-    expect(lines[0]).toBe('session   first             last              decided  auto  subagent  undone')
+    expect(lines[0]).toBe(CHANGES_NOTE)
     expect(lines.some((l) => l.startsWith('recorded under'))).toBe(false)
   })
 
@@ -437,8 +458,8 @@ describe('commands that resolve a session against the transcript store', () => {
     await threeSessions(cwd)
     const lines = ((await runSessions(cwd, 10, { since: '2026-10-01', until: '2026-10-02' })) ?? '').split('\n')
     expect(lines).toEqual([
+      CHANGES_NOTE,
       'session   first             last              decided  auto  subagent  undone',
-      '          (decided, auto and subagent count files; undone counts changes)',
       'window: 2026-10-01 to 2026-10-02',
     ])
   })
@@ -604,7 +625,7 @@ test('export with a window counts only in-window changes and keeps undone findin
     expect(late.window).toEqual({ since: '2026-09-02', until: null })
     expect(late.operations.map((o: { toolUseId: string }) => o.toolUseId)).toEqual(['t2', 't3'])
     expect(late.undone.length).toBe(0)
-    expect(late.totals.auto).toEqual({ files: 2, added: 3, removed: 1 })
+    expect(late.totals.auto).toEqual({ files: 2, changes: 2, added: 3, removed: 1 })
     expect(late.filesTouched).toBe(2)
     expect(late.byPrompt[0].added).toBe(3)
 
@@ -752,15 +773,41 @@ describe('every project at once', () => {
     expect(renderAll(await collectAll(OPEN))).not.toContain('had no session in the window')
   })
 
-  test('a long project path is cut from the front so the column stays within 48 characters', async () => {
-    const long = `/tmp/claude-0/${'scratch-'.repeat(12)}end`
+  test('a long project path is cut in the middle so the column keeps its start and end within 48 characters', async () => {
+    const long = '/home/claude-1002/-home-tim-site/523956c5-c708-4d8c-911e-2e34370507a0/scratchpad/live-try'
     await writeProject('-long', 'l.jsonl', [
       { type: 'user', uuid: 'l-u1', parentUuid: null, promptId: 'l-p1', permissionMode: 'default', timestamp: '2026-09-12T10:00:00Z', sessionId: 'l', cwd: long, message: { content: 'go' } },
     ])
     const lines = renderAll(await collectAll(OPEN)).split('\n')
-    const row = lines.find((l) => l.endsWith('scratch-end         1        0     0         0       0'))
-    expect(row?.startsWith('…')).toBe(true)
-    expect(lines[3]).toBe(`${'project'.padEnd(48)}  sessions  decided  auto  subagent  undone`)
+    const row = lines.find((l) => l.startsWith('/home/claude-1002/'))
+    expect(row?.split(/\s+/)).toEqual(['/home/claude-1002/…/scratchpad/live-try', '1', '0', '0', '0', '0'])
+    expect(lines[3]?.indexOf('sessions')).toBeLessThanOrEqual(48 + 2)
+  })
+
+  test('a project that only ran under the temp directory is skipped and counted, unless --include-temp', async () => {
+    await writeProject('-tmp-minos-demo', 'd.jsonl', [
+      { type: 'user', uuid: 'd-u1', parentUuid: null, promptId: 'd-p1', permissionMode: 'default', timestamp: '2026-09-12T10:00:00Z', sessionId: 'd', cwd: join(tmpdir(), 'minos-demo'), message: { content: 'go' } },
+    ])
+    await writeProject('-tmp-bare', 'e.jsonl', [
+      { type: 'user', uuid: 'e-u1', parentUuid: null, promptId: 'e-p1', permissionMode: 'default', timestamp: '2026-09-12T10:00:00Z', sessionId: 'e', cwd: '/tmp', message: { content: 'go' } },
+    ])
+    const skipped = await collectAll(OPEN)
+    expect(skipped.projects.map((p) => p.cwds[0])).toEqual(['/repo/a', '/repo/b'])
+    expect(skipped.tempSkipped).toBe(2)
+    expect(renderAll(skipped).split('\n')).toContain('skipped 2 projects that only ran under the temp directory (--include-temp lists them)')
+    const all = await collectAll(OPEN, { exclude: [], includeTemp: true })
+    expect(all.projects.length).toBe(4)
+    expect(all.tempSkipped).toBe(0)
+    expect(renderAll(all)).not.toContain('--include-temp')
+  })
+
+  test('--exclude leaves out a project whose every recorded path matches a glob, and the table counts it', async () => {
+    const filtered = await collectAll(OPEN, { exclude: ['/repo/b*'], includeTemp: false })
+    expect(filtered.projects.map((p) => p.cwds[0])).toEqual(['/repo/a'])
+    expect(filtered.total.changes.decided).toBe(0)
+    expect(renderAll(filtered).split('\n')).toContain('excluded 1 project matching --exclude')
+    const exported = JSON.parse((await runExportAll(OPEN, { exclude: ['/repo/**'], includeTemp: false })) ?? '')
+    expect(exported.excludedSkipped).toBe(2)
   })
 
   test('every project row carries the shell-write and decided notes, not only the total', async () => {
@@ -785,6 +832,20 @@ describe('every project at once', () => {
     expect(lines).toContain('left out 1 shell command matching a write pattern with no readable timestamp, which no window can place')
     expect(lines.some((l) => l.includes('decided 1, auto 0, subagent 0'))).toBe(true)
     expect(renderAll(await collectAll(OPEN))).not.toContain('which no window can place')
+  })
+
+  test('sessions, sessions --all and export --all give one project the same class totals', async () => {
+    const listing = ((await runSessions('/repo/a', 10, OPEN)) ?? '').split('\n')
+    const total = listing.find((l) => l.startsWith('total'))?.trim().split(/\s+/).slice(1).map(Number)
+    const row = renderAll(await collectAll(OPEN)).split('\n').find((l) => l.startsWith('/repo/a'))?.trim().split(/\s+/).slice(2).map(Number)
+    const exported = JSON.parse((await runExportAll(OPEN)) ?? '').projects.find((p: { cwds: string[] }) => p.cwds[0] === '/repo/a')
+    // The fork copies one of the parent's changes: each session row counts it, the total once.
+    expect(listing.filter((l) => l.startsWith('parent') || l.startsWith('fork')).map((l) => Number(l.trim().split(/\s+/).at(-3)))).toEqual([2, 2])
+    expect(total).toEqual([0, 3, 0, 1])
+    expect(row).toEqual(total)
+    expect(Object.values(exported.changes)).toEqual(total ?? [])
+    expect(listing).toContain('auto by mode: acceptEdits 3')
+    expect(listing).toContain('1 change copied between resumed or forked sessions counts in each row and once in the total')
   })
 
   test('a project recorded under several paths prints its newest and says how many older ones it has', async () => {
