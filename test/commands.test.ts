@@ -575,6 +575,7 @@ describe('every project at once', () => {
     expect(lines[5]).toBe('/repo/b         1        1     0         0       0')
     expect(lines[6]).toBe('total           3        1     3         0       0')
     expect(lines).toContain('auto by mode: acceptEdits 3')
+    expect(lines).toContain('possibly unseen writes (shell commands that look like writes, a heuristic, not in the classes above): decided 0, auto 0, subagent 0')
     expect(lines).toContain('dropped 1 duplicate change copied between forked or resumed sessions')
     expect(lines.at(-1)).toBe('history: oldest transcript 2026-09-10, newest 2026-09-12; 1 project directory has no transcripts left (cleanupPeriodDays prunes them)')
   })

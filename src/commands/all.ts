@@ -104,6 +104,7 @@ export function renderAll(a: Aggregate): string {
 
   const modes = Object.entries(a.total.autoModes).sort(([x, m], [y, n]) => n - m || x.localeCompare(y))
   const day = (iso: string | null): string => (iso === null ? 'unknown' : localDate(iso))
+  const w = a.total.possiblyUnseenWrites
   const out = [
     `MINOS  all projects  window ${a.window.since ?? 'start of history'} to ${a.window.until ?? today}`,
     'counts are changes: one Edit, Write or NotebookEdit tool call each, deduplicated by tool_use id',
@@ -112,6 +113,7 @@ export function renderAll(a: Aggregate): string {
     ...rows.map(line),
     '',
     `auto by mode: ${modes.length === 0 ? 'none' : modes.map(([m, n]) => `${m} ${n}`).join(', ')}`,
+    `possibly unseen writes (shell commands that look like writes, a heuristic, not in the classes above): decided ${w.decided}, auto ${w.auto}, subagent ${w.subagent}`,
     `dropped ${plural(a.duplicatesDropped, 'duplicate change', 'duplicate changes')} copied between forked or resumed sessions`,
   ]
   if (rowsExceedTotal(a)) out.push('a change copied into another project counts in both rows and once in the total')

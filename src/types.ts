@@ -7,6 +7,13 @@ export type OperationKind = 'write' | 'edit' | 'notebook'
 /** A raw transcript record, before anything has been narrowed. */
 export type UnknownRecord = Record<string, unknown>
 
+/** A Bash call that looks like it wrote a file: a heuristic, never one of the three classes' operations. */
+export interface ShellWrite {
+  toolUseId: string
+  at: string
+  attestation: Attestation
+}
+
 /** One change to one file, in the order the session applied it. */
 export interface Operation {
   file: string

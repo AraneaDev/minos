@@ -88,3 +88,36 @@ test('a prompt that recorded an empty mode yields a null permissionMode', () => 
   }
   expect(ledger.operations()[0]?.permissionMode).toBeNull()
 })
+
+const bash = (id: string, command: string) => ({
+  type: 'assistant',
+  uuid: `b-${id}`,
+  parentUuid: 'u1',
+  timestamp: '2026-09-07T19:04:00Z',
+  isSidechain: false,
+  message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] },
+})
+
+function shellWritesFor(command: string) {
+  const prompts = new PromptIndex()
+  const ledger = new Ledger()
+  for (const r of [prompt, bash('sh1', command)]) {
+    prompts.observe(r)
+    ledger.observe(r, prompts)
+  }
+  return ledger
+}
+
+test.each(['sed -i s/a/b/ f', 'echo x > f', 'echo x >> f', 'cat a | tee f', 'mv a b', 'rm f'])('a shell command that writes counts: %s', (command) => {
+  const ledger = shellWritesFor(command)
+  expect(ledger.shellWrites()).toEqual([{ toolUseId: 'sh1', at: '2026-09-07T19:04:00Z', attestation: 'auto' }])
+  expect(ledger.operations()).toHaveLength(0)
+})
+
+test.each(['ls 2>&1', 'cmd > /dev/null', 'cmd 2>/dev/null', 'ls'])('a shell command that only reads or discards does not count: %s', (command) => {
+  expect(shellWritesFor(command).shellWrites()).toEqual([])
+})
+
+test("grep '>' f is a known false positive: the quoted > reads as a redirect", () => {
+  expect(shellWritesFor("grep '>' f").shellWrites()).toHaveLength(1)
+})

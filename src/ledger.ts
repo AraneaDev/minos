@@ -1,7 +1,7 @@
 import { attest } from './attest'
 import type { PromptIndex } from './prompts'
 import { toolUses } from './records'
-import type { Operation, OperationKind, UnknownRecord } from './types'
+import type { Operation, OperationKind, ShellWrite, UnknownRecord } from './types'
 
 const KINDS: Record<string, OperationKind> = {
   Edit: 'edit',
@@ -10,6 +10,19 @@ const KINDS: Record<string, OperationKind> = {
 }
 
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
+
+/** Shell syntax that tends to write: `sed -i`, a redirect to a file, `tee`, `mv`, `rm`. */
+const SHELL_WRITE = /\bsed\s+-i\b|(^|[^0-9&])>>?\s*[^&\s]|\btee\b|\bmv\b|\brm\b/
+
+/** Redirects that write nothing: to `/dev/null`, or a descriptor copy such as `2>&1`. */
+const HARMLESS_REDIRECT = /\d*>>?\s*\/dev\/null|\d*>&\d/g
+
+/**
+ * True when a shell command looks like it writes a file. A heuristic: a quoted
+ * `>` as in `grep '>' f` reads as a redirect, and a write through an
+ * interpreter (`python -c`, `node -e`) is missed.
+ */
+const looksLikeWrite = (command: string): boolean => SHELL_WRITE.test(command.replace(HARMLESS_REDIRECT, ''))
 
 /**
  * Orders two operations by their ISO 8601 timestamp, lexicographic order
@@ -30,6 +43,7 @@ const byTimestamp = (a: Operation, b: Operation): number => (a.at < b.at ? -1 : 
 export class Ledger {
   private readonly ops: Operation[]
   private readonly modes: Set<string>
+  private readonly shell: ShellWrite[] = []
 
   constructor() {
     this.ops = []
@@ -42,6 +56,12 @@ export class Ledger {
     if (uuid === null) return
 
     for (const use of toolUses(record)) {
+      const command = use.name === 'Bash' ? str(use.input.command) : null
+      if (command !== null && looksLikeWrite(command)) {
+        const prompt = prompts.resolve(uuid)
+        const result = attest({ isSidechain: record.isSidechain === true, permissionMode: prompt?.permissionMode ?? null })
+        this.shell.push({ toolUseId: use.id, at: str(record.timestamp) ?? '', attestation: result.label })
+      }
       const kind = KINDS[use.name]
       if (kind === undefined) continue
       const file = str(use.input.file_path) ?? str(use.input.notebook_path)
@@ -97,6 +117,15 @@ export class Ledger {
     }
     for (const [file, ops] of grouped) grouped.set(file, [...ops].sort(byTimestamp))
     return grouped
+  }
+
+  /**
+   * Bash calls that look like file writes, in timestamp order. Separate from
+   * `operations` on purpose: the diff is not in the transcript, so none of
+   * these can be called a change, only a possibly unseen one.
+   */
+  shellWrites(): ShellWrite[] {
+    return [...this.shell].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
   }
 
   /** Permission modes this build did not recognise, for the report to name. */

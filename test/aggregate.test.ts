@@ -41,6 +41,7 @@ function report(operations: Operation[], over: Partial<SessionReport> = {}): Ses
     filesTouched: 0,
     unattributedCount: 0,
     operations,
+    shellWrites: [],
     ...over,
   }
 }
@@ -159,4 +160,17 @@ test('keeps a project span to its counted sessions', () => {
   expect(a.projects[0]!.firstAt).toBe('2026-09-22T10:00:00Z')
   expect(a.total.firstAt).toBe('2026-09-22T10:00:00Z')
   expect(a.oldestTranscript).toBe('2026-01-05T00:00:00Z')
+})
+
+test('shell writes are counted apart from the classes, once by tool_use id, inside the window', () => {
+  const w = (id: string, at: string, attestation: Attestation) => ({ toolUseId: id, at, attestation })
+  const a = one(
+    [
+      report([], { shellWrites: [w('s1', '2026-09-22T10:00:00Z', 'auto'), w('s2', '2026-09-21T10:00:00Z', 'auto')] }),
+      report([], { shellWrites: [w('s1', '2026-09-22T10:00:00Z', 'auto'), w('s3', '2026-09-23T10:00:00Z', 'subagent')] }),
+    ],
+    { since: '2026-09-22', until: null },
+  )
+  expect(a.total.possiblyUnseenWrites).toEqual({ decided: 0, auto: 1, subagent: 1 })
+  expect(a.total.changes).toEqual({ decided: 0, auto: 0, subagent: 0, undone: 0 })
 })

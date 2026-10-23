@@ -3,7 +3,7 @@ import { subagentToolUseId } from './paths'
 import { PromptIndex } from './prompts'
 import { findUndone } from './reverts'
 import { eachRecord } from './transcript'
-import type { Attestation, Operation, Prompt, UnknownRecord } from './types'
+import type { Attestation, Operation, Prompt, ShellWrite, UnknownRecord } from './types'
 import type { Undone } from './reverts'
 import { inWindow } from './window'
 import type { Window } from './window'
@@ -74,6 +74,8 @@ export interface SessionReport {
    * would not survive `minos export`'s JSON round trip the way an array does.
    */
   operations: Operation[]
+  /** Bash calls inside the window that look like file writes: a heuristic, outside `totals` and every other count. */
+  shellWrites: ShellWrite[]
 }
 
 const lines = (text: string | null): number => {
@@ -227,5 +229,6 @@ export async function analyseSession(
     filesTouched: perFile.size,
     unattributedCount,
     operations,
+    shellWrites: ledger.shellWrites().filter((w) => inWindow(w.at, window)),
   }
 }

@@ -8,7 +8,7 @@
  * only counted as duplicates.
  */
 import type { SessionReport } from './session'
-import type { Operation } from './types'
+import type { Operation, ShellWrite } from './types'
 import { inWindow } from './window'
 import type { Window } from './window'
 
@@ -29,6 +29,8 @@ export interface ProjectAggregate {
   sessions: number
   /** Operations, deduplicated by tool_use id. */
   changes: ClassCounts
+  /** Bash calls that look like file writes, deduplicated by tool_use id: a heuristic, never part of `changes`. */
+  possiblyUnseenWrites: Omit<ClassCounts, 'undone'>
   /** Auto operations per recorded permission mode; a null mode counts as 'unknown'. */
   autoModes: Record<string, number>
   /** The earliest startedAt among its counted sessions, as written. */
@@ -76,6 +78,7 @@ function later(a: string | null, b: string | null): string | null {
 /** A running count over one scope: a single project, or all of them. */
 class Tally {
   readonly changes: ClassCounts = { decided: 0, auto: 0, subagent: 0, undone: 0 }
+  readonly shellWrites: Omit<ClassCounts, 'undone'> = { decided: 0, auto: 0, subagent: 0 }
   readonly autoModes: Record<string, number> = {}
   readonly cwds = new Set<string>()
   sessions = 0
@@ -86,6 +89,7 @@ class Tally {
   duplicates = 0
   undated = 0
   private readonly seen = new Set<string>()
+  private readonly seenShell = new Set<string>()
   private readonly seenUndone = new Set<string>()
 
   constructor(private readonly window: Window) {}
@@ -108,6 +112,13 @@ class Tally {
     }
   }
 
+  /** Count one shell write once by tool_use id, when it falls inside the window. */
+  addShellWrite(w: ShellWrite): void {
+    if (this.seenShell.has(w.toolUseId) || !inWindow(w.at, this.window)) return
+    this.seenShell.add(w.toolUseId)
+    this.shellWrites[w.attestation]++
+  }
+
   /** Count an undone finding by the operation that introduced it, once. */
   addUndone(introduced: Operation): void {
     if (this.seenUndone.has(introduced.toolUseId)) return
@@ -118,6 +129,7 @@ class Tally {
   /** Fold one session in: its operations, its undone findings and its time span. */
   addSession(report: SessionReport): void {
     for (const op of report.operations) this.add(op)
+    for (const w of report.shellWrites) this.addShellWrite(w)
     for (const u of report.undone) this.addUndone(u.introduced)
     const touched = report.operations.some((o) => inWindow(o.at, this.window))
     const spans = [report.startedAt, report.endedAt].some((t) => t !== null && inWindow(t, this.window))
@@ -135,6 +147,7 @@ class Tally {
       cwds: sortCwds ? [...this.cwds].sort() : [...this.cwds],
       sessions: this.sessions,
       changes: this.changes,
+      possiblyUnseenWrites: this.shellWrites,
       autoModes: this.autoModes,
       firstAt: this.firstAt,
       lastAt: this.lastAt,
