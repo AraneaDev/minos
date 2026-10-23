@@ -63,3 +63,19 @@ export function toolUses(r: UnknownRecord): ToolUse[] {
   }
   return uses
 }
+
+/**
+ * The tool_use ids whose tool_result in this record is an error: a failed
+ * call or a permission denial. Results arrive in a later `user` record as
+ * `tool_result` content blocks, each naming the call it answers.
+ */
+export function failedToolResults(r: UnknownRecord): string[] {
+  const content = asObject(r.message)?.content
+  if (!Array.isArray(content)) return []
+  const ids: string[] = []
+  for (const block of content) {
+    const b = asObject(block)
+    if (b?.type === 'tool_result' && b.is_error === true && typeof b.tool_use_id === 'string') ids.push(b.tool_use_id)
+  }
+  return ids
+}
