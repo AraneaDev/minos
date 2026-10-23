@@ -105,39 +105,76 @@ export const VERB: Record<UndoneKind, string> = { overwritten: 'replaced', rever
 const UNITS = '(decided, auto and subagent count files; undone counts changes)'
 
 /**
- * The ledger as lines, in the report's own wording and helpers, with the lines
- * a display should draw quietly (the units line and the caveats) named, so the
- * pane does not have to recognise them by their wording. Times count from the
- * session's first prompt, the origin `minos report` uses, so a change from a
- * later day carries the same `+Nd` suffix there and here.
+ * Every word, number and time a display of the ledger shows, already written
+ * the way the report writes them: paths shown relative to the session and
+ * sanitised, times on the reader's clock counted from the first prompt, the
+ * prompt named as the report names it, the caveats in the report's wording.
+ * The text form and any pane lay these out; neither composes one of its own.
  */
-export function ledgerLines(view: LedgerView): { lines: string[]; dim: string[] } {
-  const since = view.origin === '' ? '' : `  since ${localStamp(view.origin)}`
+export interface LedgerDisplay {
+  session: string
+  since: string | null
+  counts: LedgerView['counts']
+  units: string
+  files: { file: string; shown: string; label: 'auto' | 'subagent'; changes: string }[]
+  undone: { shown: string; kind: UndoneKind; verb: string; at: string; prompt: string; endedAt: string }[]
+  caveats: string[]
+  empty: string | null
+}
+
+/** The ledger's display strings, for the text form and for a pane. */
+export function ledgerDisplay(view: LedgerView): LedgerDisplay {
   const c = view.counts
-  const out = [
-    `MINOS  ledger  session ${sanitise(view.sessionId).slice(0, 8)}${since}`,
-    `decided ${c.decided}  auto ${c.auto}  subagent ${c.subagent}  undone ${c.undone}`,
-    UNITS,
-  ]
-  if (view.unaskedFiles.length === 0 && view.undone.length === 0) out.push('', 'No changes yet.')
-  if (view.unaskedFiles.length > 0) {
-    out.push('', 'changed without being asked')
-    for (const f of view.unaskedFiles) {
-      out.push(`  ${pathCol(sanitise(shown(f.file, view.cwd)), 40)}${f.label.padEnd(9)} ${plural(f.changes, 'change', 'changes')}`.trimEnd())
-    }
-  }
-  if (view.undone.length > 0) {
-    out.push('', 'did not survive')
-    for (const u of view.undone) {
-      const at = clock(u.introducedAt, view.origin)
-      out.push(`  ${pathCol(sanitise(shown(u.file, view.cwd)), 40)}${u.kind}  ${at} (${u.introducedRef}), ${VERB[u.kind]} ${clock(u.undoneAt, view.origin)}`)
-    }
-  }
   const caveats: string[] = []
   if (c.decided > 0) caveats.push(`${view.decidedNote}.`)
   if (view.failedChanges > 0) caveats.push(failedNote(view.failedChanges))
-  if (caveats.length > 0) out.push('', ...caveats)
-  return { lines: out, dim: [UNITS, ...caveats] }
+  return {
+    session: sanitise(view.sessionId).slice(0, 8),
+    since: view.origin === '' ? null : localStamp(view.origin),
+    counts: c,
+    units: UNITS,
+    files: view.unaskedFiles.map((f) => ({
+      file: f.file,
+      shown: sanitise(shown(f.file, view.cwd)),
+      label: f.label,
+      changes: plural(f.changes, 'change', 'changes'),
+    })),
+    undone: view.undone.map((u) => ({
+      shown: sanitise(shown(u.file, view.cwd)),
+      kind: u.kind,
+      verb: VERB[u.kind],
+      at: clock(u.introducedAt, view.origin),
+      prompt: u.introducedRef,
+      endedAt: clock(u.undoneAt, view.origin),
+    })),
+    caveats,
+    empty: view.unaskedFiles.length === 0 && view.undone.length === 0 ? 'No changes yet.' : null,
+  }
+}
+
+/**
+ * The ledger as lines, laid out from `ledgerDisplay`, with the lines a display
+ * should draw quietly (the units line and the caveats) named.
+ */
+export function ledgerLines(view: LedgerView): { lines: string[]; dim: string[] } {
+  const d = ledgerDisplay(view)
+  const c = d.counts
+  const out = [
+    `MINOS  ledger  session ${d.session}${d.since === null ? '' : `  since ${d.since}`}`,
+    `decided ${c.decided}  auto ${c.auto}  subagent ${c.subagent}  undone ${c.undone}`,
+    d.units,
+  ]
+  if (d.empty !== null) out.push('', d.empty)
+  if (d.files.length > 0) {
+    out.push('', 'changed without being asked')
+    for (const f of d.files) out.push(`  ${pathCol(f.shown, 40)}${f.label.padEnd(9)} ${f.changes}`.trimEnd())
+  }
+  if (d.undone.length > 0) {
+    out.push('', 'did not survive')
+    for (const u of d.undone) out.push(`  ${pathCol(u.shown, 40)}${u.kind}  ${u.at} (${u.prompt}), ${u.verb} ${u.endedAt}`)
+  }
+  if (d.caveats.length > 0) out.push('', ...d.caveats)
+  return { lines: out, dim: [d.units, ...d.caveats] }
 }
 
 /** The ledger as text, as `minos ledger` prints it. */

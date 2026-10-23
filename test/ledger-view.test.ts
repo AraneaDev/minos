@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { DECIDED_NOTE } from '../src/caveats'
-import { buildLedgerView, ledgerLines, renderLedger } from '../src/ledger-view'
+import { buildLedgerView, ledgerDisplay, ledgerLines, renderLedger } from '../src/ledger-view'
 import type { SessionReport } from '../src/session'
 import type { Attestation, Operation } from '../src/types'
 
@@ -196,4 +196,14 @@ test('names the lines a display should draw quietly', () => {
   expect(dim).toContain('(decided, auto and subagent count files; undone counts changes)')
   expect(dim.some((l) => l.startsWith('decided is inferred'))).toBe(true)
   expect(dim.some((l) => l.startsWith('Left out 1 change'))).toBe(true)
+})
+
+test('the display strings carry the report wording, and the text form is laid out from them', () => {
+  const view = buildLedgerView(sample())
+  const d = ledgerDisplay(view)
+  expect(d.since).toBe('2026-10-23 18:50')
+  expect(d.files[0]).toEqual({ file: '/r/b.ts', shown: 'b.ts', label: 'subagent', changes: '1 change' })
+  expect(d.undone[0]).toEqual({ shown: 'a.ts', kind: 'overwritten', verb: 'replaced', at: '18:51', prompt: 'prompt 2', endedAt: '18:58' })
+  expect(d.empty).toBeNull()
+  for (const f of d.files) expect(renderLedger(view)).toContain(f.shown)
 })

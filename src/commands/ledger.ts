@@ -1,4 +1,4 @@
-import { buildLedgerView, ledgerLines, renderLedger } from '../ledger-view'
+import { buildLedgerView, ledgerDisplay, ledgerLines, renderLedger } from '../ledger-view'
 import { analyseSession } from '../session'
 import type { SessionPaths } from './report'
 
@@ -13,5 +13,5 @@ export async function runLedger(paths: SessionPaths, json: boolean): Promise<str
   // The text rides along with the data, so a display shows the CLI's own wording
   // and dims the lines the CLI names, rather than rebuilding either.
   const { lines, dim } = ledgerLines(view)
-  return JSON.stringify({ ...view, text: lines.join('\n'), dim }, null, 2)
+  return JSON.stringify({ ...view, text: lines.join('\n'), dim, display: ledgerDisplay(view) }, null, 2)
 }

@@ -14,15 +14,17 @@ const PANE = {
 const OPEN = { command: 'minos', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 160 } } as const
 
 const UNITS = '(decided, auto and subagent count files; undone counts changes)'
-const TEXT = [
-  'MINOS  ledger  session sess-1  since 2026-10-23 18:51',
-  'decided 0  auto 1  subagent 0  undone 0',
-  UNITS,
-  '',
-  'changed without being asked',
-  '  src/a.ts                                 auto      1 change',
-].join('\n')
-const LEDGER_JSON = JSON.stringify({ text: TEXT, dim: [UNITS], cwd: '/repo', unaskedFiles: [{ file: '/repo/src/a.ts' }] })
+const DISPLAY = {
+  session: 'sess-1',
+  since: '2026-10-23 18:50',
+  counts: { decided: 0, auto: 1, subagent: 0, undone: 1 },
+  units: UNITS,
+  files: [{ file: '/repo/src/a.ts', shown: 'src/a.ts', label: 'auto', changes: '1 change' }],
+  undone: [{ shown: 'src/a.ts', kind: 'overwritten', verb: 'replaced', at: '18:51', prompt: 'prompt 2', endedAt: '18:58' }],
+  caveats: [],
+  empty: null,
+}
+const LEDGER_JSON = JSON.stringify({ text: 'unused by the pane', display: DISPLAY })
 
 /** A CLI stand-in: the ledger as JSON, a file's history, and no undo findings. */
 const cli = (run: Run) =>
@@ -43,8 +45,11 @@ test('/minos opens the pane and it shows the ledger the CLI prints, on every sur
   await clock.settle()
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /auto 1/ }))?.text).toBe('decided 0  auto 1  subagent 0  undone 0')
-    expect((await ui.find({ type: 'Text', text: /1 change$/ }))?.text).toContain('src/a.ts')
+    expect((await ui.find({ type: 'Text', text: /session sess-1/ }))?.text).toContain('since 2026-10-23 18:50')
+    expect(await ui.find({ key: 'tile:auto' })).toBeDefined()
+    expect((await ui.find({ key: 'file:/repo/src/a.ts' }))?.text).toContain('src/a.ts')
+    expect((await ui.find({ type: 'Text', text: /auto · 1 change/ }))?.text).toBe('auto · 1 change')
+    expect((await ui.find({ type: 'Text', text: /replaced at 18:58/ }))?.text).toContain('made at 18:51 (prompt 2)')
     await ui.unmount()
   }
 })

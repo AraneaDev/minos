@@ -13,7 +13,7 @@ export const COMMAND = 'minos'
 // version kept in the session, which outlives a reload.
 
 /** The last ledger the CLI printed for this session, or null before the first refresh. */
-const view = atom({ plugin: 'minos', key: 'view' } as const, null as MinosLedger | null, { shape: 'view-json-1' })
+const view = atom({ plugin: 'minos', key: 'view' } as const, null as MinosLedger | null, { shape: 'view-display-1' })
 /** Why the last refresh failed, or null when it did not. */
 const error = atom({ plugin: 'minos', key: 'error' } as const, null as string | null, { shape: 'error-1' })
 /** Every undo note raised this session, oldest first. */
@@ -38,19 +38,23 @@ let running = false
 let again = false
 
 /** What the pane shows for a session that has no transcript yet. */
-const EMPTY: MinosLedger = { text: 'No changes yet.', dim: [], cwd: '', files: [] }
+const EMPTY: MinosLedger = {
+  session: '',
+  since: null,
+  counts: { decided: 0, auto: 0, subagent: 0, undone: 0 },
+  units: '',
+  files: [],
+  undone: [],
+  caveats: [],
+  empty: 'No changes yet.',
+}
 
-/** The ledger JSON reduced to what the pane draws, or null when it does not read as one. */
+/** The `display` part of the ledger JSON, or null when the output does not read as one. */
 function parseLedger(stdout: string): MinosLedger | null {
   try {
-    const j = JSON.parse(stdout) as { text?: unknown; dim?: unknown; cwd?: unknown; unaskedFiles?: { file?: unknown }[] }
-    if (typeof j.text !== 'string') return null
-    return {
-      text: j.text,
-      dim: Array.isArray(j.dim) ? j.dim.filter((d): d is string => typeof d === 'string') : [],
-      cwd: typeof j.cwd === 'string' ? j.cwd : '',
-      files: (j.unaskedFiles ?? []).map((f) => f.file).filter((f): f is string => typeof f === 'string'),
-    }
+    const d = (JSON.parse(stdout) as { display?: MinosLedger }).display
+    if (d === undefined || typeof d.counts !== 'object' || !Array.isArray(d.files) || !Array.isArray(d.undone)) return null
+    return d
   } catch {
     return null
   }
@@ -105,9 +109,6 @@ async function openHistory($: EngineInterface, file: string): Promise<void> {
   await update($, history, () => ({ file, text: run.ok ? run.stdout.trimEnd() : `Minos could not read this file's history: ${run.error}` }))
 }
 
-/** A path as the ledger shows it: relative to the session's directory when it is inside it. */
-const shown = (file: string, cwd: string): string => (cwd !== '' && file.startsWith(`${cwd}/`) ? file.slice(cwd.length + 1) : file)
-
 /**
  * The pane beside the chat: `/minos` opens it, and it shows the same
  * `minos ledger` text the agent's tool returns, refreshed after every change
@@ -139,26 +140,100 @@ export function livePane(on: On): void {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const [ledger, failed, raised, opened] = await Promise.all([read($, view), read($, error), read($, notes), read($, history)])
-    const dim = new Set(ledger?.dim ?? [])
-    const lines = ledger === null ? [] : ledger.text.split('\n')
-    const files = ledger?.files ?? []
+    if (failed !== null) return <Text color="error">Minos could not run: {failed}</Text>
+    if (ledger === null) return <Text dimColor>Reading this session's ledger…</Text>
+    const c = ledger.counts
+    const tiles = [
+      { label: 'decided', value: c.decided, unit: 'files', color: 'success' },
+      { label: 'auto', value: c.auto, unit: 'files', color: 'warning' },
+      { label: 'subagent', value: c.subagent, unit: 'files', color: 'claude' },
+      { label: 'undone', value: c.undone, unit: 'changes', color: 'error' },
+    ] as const
     return (
-      <Box flexDirection="column">
-        {failed !== null && <Text dimColor>Minos could not run: {failed}</Text>}
-        {ledger === null && failed === null && <Text dimColor>Reading this session's ledger.</Text>}
-        {lines.map((line) => (dim.has(line) ? <Text dimColor>{line}</Text> : <Text>{line}</Text>))}
-        {files.length > 0 && <Text> </Text>}
-        {files.length > 0 && <Text dimColor>history of a file:</Text>}
-        {files.map((file) => (
-          <Button key={`file:${file}`} label={shown(file, ledger?.cwd ?? '')} onPress={() => openHistory($, file)} />
-        ))}
-        {opened !== null && <Text> </Text>}
-        {opened !== null && opened.text.split('\n').map((line) => <Text>{line}</Text>)}
-        {raised.length > 0 && <Text> </Text>}
-        {raised.length > 0 && <Text>noted this session</Text>}
-        {raised.map((note) => (
-          <Text>  {note}</Text>
-        ))}
+      <Box flexDirection="column" gap={1}>
+        <Box gap={1}>
+          <Text bold>Minos</Text>
+          {ledger.session !== '' && (
+            <Text dimColor>
+              session {ledger.session}
+              {ledger.since === null ? '' : ` · since ${ledger.since}`}
+            </Text>
+          )}
+        </Box>
+
+        <Box flexWrap="wrap" columnGap={1}>
+          {tiles.map((t) => (
+            <Box key={`tile:${t.label}`} flexDirection="column" borderStyle="round" borderColor={t.value > 0 ? t.color : 'inactive'} paddingX={1} minWidth={12}>
+              <Text bold color={t.value > 0 ? t.color : 'inactive'}>
+                {t.value}
+              </Text>
+              <Text>{t.label}</Text>
+              <Text dimColor>{t.unit}</Text>
+            </Box>
+          ))}
+        </Box>
+
+        {ledger.empty !== null && <Text dimColor>{ledger.empty}</Text>}
+
+        {ledger.files.length > 0 && (
+          <Box flexDirection="column">
+            <Box gap={1}>
+              <Text bold>CHANGED WITHOUT ASKING</Text>
+              <Text dimColor>press a file for its history</Text>
+            </Box>
+            {ledger.files.map((f) => (
+              <Box key={`row:${f.file}`} gap={1}>
+                <Text color={f.label === 'auto' ? 'warning' : 'claude'}>●</Text>
+                <Button key={`file:${f.file}`} label={f.shown} onPress={() => openHistory($, f.file)} />
+                <Text dimColor>
+                  {f.label} · {f.changes}
+                </Text>
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        {opened !== null && (
+          <Box flexDirection="column" borderStyle="single" borderColor="subtle" paddingX={1}>
+            {opened.text.split('\n').map((line) => (
+              <Text>{line}</Text>
+            ))}
+          </Box>
+        )}
+
+        {ledger.undone.length > 0 && (
+          <Box flexDirection="column">
+            <Text bold>DID NOT SURVIVE</Text>
+            {ledger.undone.map((u) => (
+              <Text>
+                <Text color="error">↺ </Text>
+                {u.shown} <Text dimColor>{u.verb} at {u.endedAt}, made at {u.at} ({u.prompt})</Text>
+              </Text>
+            ))}
+          </Box>
+        )}
+
+        {raised.length > 0 && (
+          <Box flexDirection="column">
+            <Text bold>NOTED THIS SESSION</Text>
+            {raised.map((note) => (
+              <Text>
+                <Text color="error">↺ </Text>
+                {note.replace(/^Minos: this /, '')}
+              </Text>
+            ))}
+          </Box>
+        )}
+
+        {ledger.caveats.length > 0 && (
+          <Box flexDirection="column">
+            {ledger.caveats.map((line) => (
+              <Text dimColor italic>
+                {line}
+              </Text>
+            ))}
+          </Box>
+        )}
       </Box>
     )
   })
