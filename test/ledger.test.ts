@@ -219,3 +219,73 @@ test('an edit whose tool call failed is left out of the changes and returned as 
   expect([...ledger.byFile().keys()]).toEqual([])
   expect(ledger.failedOperations().map((o) => o.toolUseId)).toEqual(['t1'])
 })
+
+/** A user record answering one tool call with an error carrying `content`. */
+const errored = (id: string, content: string) => ({
+  type: 'user',
+  uuid: `r-${id}`,
+  parentUuid: `b-${id}`,
+  timestamp: '2026-09-07T19:04:01Z',
+  message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content }] },
+})
+
+test('a shell write that ran and exited non-zero is still counted; one refused before it ran is not', () => {
+  const ledger = observeAll([
+    prompt,
+    bash('sh1', 'rm a'),
+    errored('sh1', 'Exit code 1\nrm: cannot remove b: No such file or directory'),
+    bash('sh2', 'rm b'),
+    errored('sh2', 'PreToolUse:Bash hook error: blocked'),
+    bash('sh3', 'rm c'),
+    errored('sh3', "The user doesn't want to proceed with this tool use. The tool use was rejected."),
+    bash('sh4', 'rm d'),
+    errored('sh4', 'The server-side auto mode classifier gave no verdict (error), so auto mode cannot determine the safety of Bash.'),
+  ])
+  expect(ledger.shellWrites().map((w) => w.toolUseId)).toEqual(['sh1'])
+})
+
+test('an edit is left out on any error, an exit code included', () => {
+  const ledger = observeAll([prompt, edit, errored('t1', 'Exit code 1')])
+  expect(ledger.operations()).toEqual([])
+  expect(ledger.failedOperations().map((o) => o.toolUseId)).toEqual(['t1'])
+})
+
+test('an unrecognised permission mode is named only when a change made under it landed', () => {
+  const odd = { ...prompt, permissionMode: 'someNewMode' }
+  const failedOnly = observeAll([odd, edit, errored('t1', 'String to replace not found in file.')])
+  expect(failedOnly.unrecognisedModes()).toEqual([])
+  const landed = observeAll([odd, edit])
+  expect(landed.unrecognisedModes()).toEqual(['someNewMode'])
+})
+
+test.each([
+  'sort<in>out',
+  'wc -l<a>b',
+  'cat <<EOF>out\nbody\nEOF',
+  '\\rm a',
+  'command rm a',
+  'env rm a',
+  'env -u HOME FOO=1 rm a',
+  'nohup rm a',
+  'time rm a',
+  'sudo -u bob rm a',
+  'sudo -u bob -g staff mv a b',
+  'xargs -I {} rm {}',
+  'sed -e s/a/b/ -i f',
+  'sed -n -e s/a/b/p --in-place f',
+  'sed -f script.sed -i f',
+])('a write behind a wrapper, an escape or a later option counts: %s', (command) => {
+  expect(shellWritesFor(command).shellWrites()).toHaveLength(1)
+})
+
+test.each(['echo Map<K,V>', 'echo Array<string>', 'f Array<string> x', 'echo x->y', 'command -v rm', 'sudo -u rm ls', 'sed -e s/i/x/ f', 'sed -e -i f'])(
+  'a type, an arrow or a lookup still does not count: %s',
+  (command) => {
+    expect(shellWritesFor(command).shellWrites()).toEqual([])
+  },
+)
+
+test('the cases left as they are: echo sed -i still counts, $(...) is not unpicked', () => {
+  expect(shellWritesFor('echo sed -i').shellWrites()).toHaveLength(1)
+  expect(shellWritesFor('x=$(rm a)').shellWrites()).toHaveLength(1)
+})

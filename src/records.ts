@@ -59,18 +59,65 @@ export function toolUses(r: UnknownRecord): ToolUse[] {
   return uses
 }
 
+/** One tool call whose result was an error, and whether that error says the call never ran. */
+export interface FailedResult {
+  id: string
+  refused: boolean
+}
+
 /**
- * The tool_use ids whose tool_result in this record is an error: a failed
- * call or a permission denial. Results arrive in a later `user` record as
- * `tool_result` content blocks, each naming the call it answers.
+ * Openings of an error result that say the harness stopped the call before
+ * it started, each matched against a real store: a permission denial (by a
+ * rule, a safety check or the auto mode classifier), a `PreToolUse` hook
+ * block, a harness block, a classifier that gave no verdict, a user
+ * rejection, and a deny rule naming the path it blocked. Anchored to the
+ * first line, so a command that ran and printed `Permission denied` or `rejected`
+ * after its `Exit code N` line is never read as a refusal.
  */
-export function failedToolResults(r: UnknownRecord): string[] {
+const REFUSALS: readonly RegExp[] = [
+  /^Permission (?:to use|for this)\b[^\n]*?\bdenied\b/,
+  /^PreToolUse:/,
+  /^(?:<tool_use_error>)?Blocked:/,
+  /^The server-side auto mode classifier gave no verdict\b/,
+  /^The user doesn't want to proceed\b/,
+  /^[^\n]*\bwas blocked by a deny rule\.?(?:\n|$)/,
+]
+
+/** A tool_result's text, from either the string or the content-block form. */
+function resultText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((block) => asObject(block))
+    .map((block) => (block?.type === 'text' && typeof block.text === 'string' ? block.text : ''))
+    .join('\n')
+}
+
+/**
+ * True when an error result says the call never ran. Any other error, such
+ * as the `Exit code N` the Bash tool reports for a non-zero exit, means the
+ * call did run and may have changed something before it failed.
+ */
+const isRefusal = (text: string): boolean => {
+  const trimmed = text.trimStart()
+  return REFUSALS.some((re) => re.test(trimmed))
+}
+
+/**
+ * The tool calls whose tool_result in this record is an error, each marked
+ * `refused` when the error says the call never ran. Results arrive in a later
+ * `user` record as `tool_result` content blocks, each naming the call it
+ * answers.
+ */
+export function failedToolResults(r: UnknownRecord): FailedResult[] {
   const content = asObject(r.message)?.content
   if (!Array.isArray(content)) return []
-  const ids: string[] = []
+  const failed: FailedResult[] = []
   for (const block of content) {
     const b = asObject(block)
-    if (b?.type === 'tool_result' && b.is_error === true && typeof b.tool_use_id === 'string') ids.push(b.tool_use_id)
+    if (b?.type === 'tool_result' && b.is_error === true && typeof b.tool_use_id === 'string') {
+      failed.push({ id: b.tool_use_id, refused: isRefusal(resultText(b.content)) })
+    }
   }
-  return ids
+  return failed
 }

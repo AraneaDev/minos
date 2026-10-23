@@ -163,9 +163,14 @@ per recorded permission mode, and a line says how many duplicates were dropped. 
 the oldest and newest transcript, and the project directories that have no transcripts left. Claude
 Code prunes old transcripts (`cleanupPeriodDays`), so `--all` only covers what has not been pruned
 yet, and the totals will shrink as that happens. A project with no session in the window gets no
-row, and one line under the table counts those projects instead. A separate line counts shell
-commands that look like file writes, leaving out any call that failed or was denied. It is a loose
-heuristic, and those commands are never counted in the classes.
+row, and one line under the table counts those projects instead. With no window, that line counts
+the projects that had no session with a known time. An Edit or Write whose tool call failed or was
+refused wrote nothing, so it is left out of every count, here and in the single-session views, and
+a line says how many. A separate line counts shell commands that look like file writes. A command
+is left out of it only when it never ran: a permission denial, a `PreToolUse` hook block, a
+classifier refusal or missing verdict, or a user rejection. A command that ran and exited non-zero
+(`Exit code N`) stays in, since it may have written before it failed. It is a loose heuristic, and
+those commands are never counted in the classes.
 
 In Claude Code, `/minos` prints the report for the session you are in.
 

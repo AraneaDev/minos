@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { isPromptRecord, promptText, toolUses } from '../src/records'
+import { failedToolResults, isPromptRecord, promptText, toolUses } from '../src/records'
 
 const prompt = {
   type: 'user',
@@ -76,4 +76,47 @@ test('tool uses come back with their full input', () => {
     { id: 't1', name: 'Edit', input: { file_path: '/a', old_string: 'x', new_string: 'y' } },
   ])
   expect(toolUses(prompt)).toEqual([])
+})
+
+/** A user record answering one tool call with an error whose content is `content`. */
+const errorResult = (content: unknown) => ({
+  type: 'user',
+  uuid: 'r1',
+  message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content }] },
+})
+
+// Each of these is the opening of a result found in a real store for a Bash
+// call that the harness stopped before it started.
+test.each([
+  'Permission to use Bash with command head -40; ls secrets has been denied.',
+  'Permission for this command was denied by a built-in Claude Code safety check, not by the user.',
+  'Permission for this action was denied by the Claude Code auto mode classifier. Reason: judged dangerous.',
+  'Permission for this tool use was denied. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).',
+  'PreToolUse:Bash hook error: context-mode: curl/wget redirected.',
+  '<tool_use_error>Blocked: sleep 100 followed by: cat out. To wait for a condition, use Monitor.</tool_use_error>',
+  'The server-side auto mode classifier gave no verdict (error), so auto mode cannot determine the safety of Bash.',
+  "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).",
+  "grep from '/repo/.env.example' was blocked by a deny rule.",
+])('a result saying the call never ran is a refusal: %s', (content) => {
+  expect(failedToolResults(errorResult(content))).toEqual([{ id: 't1', refused: true }])
+  expect(failedToolResults(errorResult([{ type: 'text', text: content }]))).toEqual([{ id: 't1', refused: true }])
+})
+
+// The Bash tool sets is_error on any non-zero exit, so the command ran and
+// may have written before it failed.
+test.each([
+  'Exit code 1',
+  "Exit code 1\nsed: -e expression #1, char 5: unterminated `s' command",
+  'Exit code 1\nrm: cannot remove a: Permission denied',
+  'Exit code 2\nThe tool use was rejected',
+  'Exit code 1\ncurl from x was blocked by a deny rule.',
+  '[Tool call interrupted: the session ended before this call\'s result was recorded, so its outcome is unknown.]',
+  'String to replace not found in file.',
+])('any other error result is a failure, not a refusal: %s', (content) => {
+  expect(failedToolResults(errorResult(content))).toEqual([{ id: 't1', refused: false }])
+})
+
+test('a result that is not an error is not returned', () => {
+  const ok = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Permission to use Bash has been denied.' }] } }
+  expect(failedToolResults(ok)).toEqual([])
 })
