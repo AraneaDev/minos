@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.8](https://github.com/AraneaDev/minos/compare/v0.0.7...v0.0.8) (2026-10-23)
+
+
+### Features
+
+* **cli:** count every project at once, for a stated date window ([#15](https://github.com/AraneaDev/minos/issues/15)) ([468be2c](https://github.com/AraneaDev/minos/commit/468be2c734324bee291ec2a492d5892d6ed53456))
+
 ## [0.0.7](https://github.com/AraneaDev/minos/compare/v0.0.6...v0.0.7) (2026-09-16)
 
 
