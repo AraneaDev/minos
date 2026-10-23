@@ -2,6 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { MinosHistory, MinosLedger } from '../types'
+import { CLOSE_PRESS, FILE_PRESS, paneRows } from './layout'
+import type { Segment } from './layout'
 import { forSession } from './minos'
 
 /** The pane's id. */
@@ -109,6 +111,14 @@ async function openHistory($: EngineInterface, file: string): Promise<void> {
   await update($, history, () => ({ file, text: run.ok ? run.stdout.trimEnd() : `Minos could not read this file's history: ${run.error}` }))
 }
 
+/** A plain segment's text style. */
+const style = (s: Segment) => ({
+  ...(s.color === undefined ? {} : { color: s.color }),
+  ...(s.bold === true ? { bold: true } : {}),
+  ...(s.dim === true ? { dimColor: true } : {}),
+  ...(s.italic === true ? { italic: true } : {}),
+})
+
 /**
  * The pane beside the chat: `/minos` opens it, and it shows the same
  * `minos ledger` text the agent's tool returns, refreshed after every change
@@ -140,100 +150,25 @@ export function livePane(on: On): void {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const [ledger, failed, raised, opened] = await Promise.all([read($, view), read($, error), read($, notes), read($, history)])
-    if (failed !== null) return <Text color="error">Minos could not run: {failed}</Text>
+    const room = Math.max(20, e.props.bodyColumns)
+    if (failed !== null) return <Text wrap="truncate-end" color="error">Minos could not run: {failed}</Text>
     if (ledger === null) return <Text dimColor>Reading this session's ledger…</Text>
-    const c = ledger.counts
-    const tiles = [
-      { label: 'decided', value: c.decided, unit: 'files', color: 'success' },
-      { label: 'auto', value: c.auto, unit: 'files', color: 'warning' },
-      { label: 'subagent', value: c.subagent, unit: 'files', color: 'claude' },
-      { label: 'undone', value: c.undone, unit: 'changes', color: 'error' },
-    ] as const
+    const press = (id: string) => (id === CLOSE_PRESS ? update($, history, () => null) : openHistory($, id.slice(FILE_PRESS.length)))
     return (
-      <Box flexDirection="column" gap={1}>
-        <Box gap={1}>
-          <Text bold>Minos</Text>
-          {ledger.session !== '' && (
-            <Text dimColor>
-              session {ledger.session}
-              {ledger.since === null ? '' : ` · since ${ledger.since}`}
-            </Text>
-          )}
-        </Box>
-
-        <Box flexWrap="wrap" columnGap={1}>
-          {tiles.map((t) => (
-            <Box key={`tile:${t.label}`} flexDirection="column" borderStyle="round" borderColor={t.value > 0 ? t.color : 'inactive'} paddingX={1} minWidth={12}>
-              <Text bold color={t.value > 0 ? t.color : 'inactive'}>
-                {t.value}
-              </Text>
-              <Text>{t.label}</Text>
-              <Text dimColor>{t.unit}</Text>
-            </Box>
-          ))}
-        </Box>
-
-        {ledger.empty !== null && <Text dimColor>{ledger.empty}</Text>}
-
-        {ledger.files.length > 0 && (
-          <Box flexDirection="column">
-            <Box gap={1}>
-              <Text bold>CHANGED WITHOUT ASKING</Text>
-              <Text dimColor>press a file for its history</Text>
-            </Box>
-            {ledger.files.map((f) => (
-              <Box key={`row:${f.file}`} gap={1}>
-                <Text color={f.label === 'auto' ? 'warning' : 'claude'}>●</Text>
-                <Button key={`file:${f.file}`} label={f.shown} onPress={() => openHistory($, f.file)} />
-                <Text dimColor>
-                  {f.label} · {f.changes}
+      <Box flexDirection="column">
+        {paneRows(ledger, raised, opened, room).map((line) => (
+          <Box key={line.key} width={room} overflow="hidden">
+            {line.segments.map((s) =>
+              s.press === undefined ? (
+                <Text wrap="truncate-end" {...style(s)}>
+                  {s.text}
                 </Text>
-              </Box>
-            ))}
+              ) : (
+                <Button key={s.press} plain label={s.text} {...(s.dim === true ? { dimColor: true } : {})} onPress={() => press(s.press!)} />
+              ),
+            )}
           </Box>
-        )}
-
-        {opened !== null && (
-          <Box flexDirection="column" borderStyle="single" borderColor="subtle" paddingX={1}>
-            {opened.text.split('\n').map((line) => (
-              <Text>{line}</Text>
-            ))}
-          </Box>
-        )}
-
-        {ledger.undone.length > 0 && (
-          <Box flexDirection="column">
-            <Text bold>DID NOT SURVIVE</Text>
-            {ledger.undone.map((u) => (
-              <Text>
-                <Text color="error">↺ </Text>
-                {u.shown} <Text dimColor>{u.verb} at {u.endedAt}, made at {u.at} ({u.prompt})</Text>
-              </Text>
-            ))}
-          </Box>
-        )}
-
-        {raised.length > 0 && (
-          <Box flexDirection="column">
-            <Text bold>NOTED THIS SESSION</Text>
-            {raised.map((note) => (
-              <Text>
-                <Text color="error">↺ </Text>
-                {note.replace(/^Minos: this /, '')}
-              </Text>
-            ))}
-          </Box>
-        )}
-
-        {ledger.caveats.length > 0 && (
-          <Box flexDirection="column">
-            {ledger.caveats.map((line) => (
-              <Text dimColor italic>
-                {line}
-              </Text>
-            ))}
-          </Box>
-        )}
+        ))}
       </Box>
     )
   })

@@ -45,11 +45,12 @@ test('/minos opens the pane and it shows the ledger the CLI prints, on every sur
   await clock.settle()
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /session sess-1/ }))?.text).toContain('since 2026-10-23 18:50')
-    expect(await ui.find({ key: 'tile:auto' })).toBeDefined()
-    expect((await ui.find({ key: 'file:/repo/src/a.ts' }))?.text).toContain('src/a.ts')
-    expect((await ui.find({ type: 'Text', text: /auto · 1 change/ }))?.text).toBe('auto · 1 change')
-    expect((await ui.find({ type: 'Text', text: /replaced at 18:58/ }))?.text).toContain('made at 18:51 (prompt 2)')
+    expect((await ui.find({ type: 'Text', text: /session sess-1/ }))?.text).toContain('session sess-1')
+    expect((await ui.find({ type: 'Text', text: /since 2026-10-23 18:50/ }))).toBeDefined()
+    expect((await ui.find({ key: 'file:/repo/src/a.ts' }))?.text).toContain('a.ts')
+    expect(await ui.find({ type: 'Text', text: /· 1 change/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /replaced 18:58/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /made 18:51 \(prompt 2\)/ })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -64,7 +65,9 @@ test('pressing a file in the pane shows its history', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: 'file:/repo/src/a.ts' })
   expect(runs.some((r) => r.argv[2] === 'file' && r.argv[3] === '/repo/src/a.ts')).toBe(true)
-  expect((await ui.find({ type: 'Text', text: /operation in this session/ }))?.text).toBe('src/a.ts: 1 operation in this session')
+  expect((await ui.find({ type: 'Text', text: /operation in this session/ }))?.text).toContain('src/a.ts: 1 operation in this session')
+  await ui.press({ key: 'history:close' })
+  expect(await ui.find({ type: 'Text', text: /operation in this session/ })).toBeUndefined()
   await ui.unmount()
 })
 
