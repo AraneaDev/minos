@@ -48,8 +48,8 @@ for (const helpFlag of ['--help', '-h']) {
         expect(usage).toContain(`minos ${command}`)
       }
       for (const name of ['--all', '--since', '--until']) expect(usage).toContain(name)
-      // Real flags only: --json does not exist anywhere in this CLI.
-      expect(usage).not.toContain('--json')
+      expect(usage).toContain('minos ledger')
+      expect(usage).toContain('--json')
       expect(usage).not.toContain('MINOS')
     } finally {
       logSpy.mockRestore()
@@ -365,4 +365,33 @@ test('export with a window dispatches and carries the window', async () => {
   const { code, out } = await capture(['export', '--project', '/fake/cli-export-window', '--since', '2026-09-07'])
   expect(code).toBe(0)
   expect(JSON.parse(out).window).toEqual({ since: '2026-09-07', until: null })
+})
+
+test('--json on any command but ledger exits 2 and says so', async () => {
+  const errSpy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    expect(await main(['report', '--json'])).toBe(2)
+    expect(errSpy).toHaveBeenCalledWith('minos: --json only applies to ledger')
+  } finally {
+    errSpy.mockRestore()
+  }
+})
+
+test('minos ledger --json prints parseable JSON for the latest session', async () => {
+  const cwd = '/root/fake-ledger-cli'
+  const projectDir = join(configDir, 'projects', encodeProjectSlug(cwd))
+  await mkdir(projectDir, { recursive: true })
+  await writeFile(
+    join(projectDir, 'sess-1.jsonl'),
+    `${JSON.stringify({ type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'default', timestamp: '2026-10-23T18:51:00Z', cwd, sessionId: 'sess-1', message: { content: 'hi' } })}\n`,
+  )
+  const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['ledger', '--json', '--project', cwd])).toBe(0)
+    const view = JSON.parse((logSpy.mock.calls[0] as [string])[0])
+    expect(view.sessionId).toBe('sess-1')
+    expect(view.counts).toEqual({ decided: 0, auto: 0, subagent: 0, undone: 0 })
+  } finally {
+    logSpy.mockRestore()
+  }
 })

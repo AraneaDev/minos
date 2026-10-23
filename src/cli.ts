@@ -4,24 +4,23 @@ import { runAll } from './commands/all'
 import { resolveSession, runReport } from './commands/report'
 import { runExport, runExportAll } from './commands/export'
 import { runFile } from './commands/file'
+import { runLedger } from './commands/ledger'
 import { runSessions } from './commands/sessions'
 import { runUndone } from './commands/undone'
 import { claudeHome } from './paths'
 import type { Window } from './window'
 
-const COMMANDS = ['report', 'file', 'undone', 'sessions', 'export'] as const
+const COMMANDS = ['report', 'file', 'undone', 'sessions', 'export', 'ledger'] as const
 
 const FLAG_NAMES = ['project', 'session', 'limit', 'since', 'until'] as const
 
 /** Flags that take no value. Kept apart from FLAG_NAMES, whose entries consume the argument after them. */
-const BARE_FLAGS = ['all'] as const
+const BARE_FLAGS = ['all', 'json'] as const
 
 /**
- * Usage text for `--help`/`-h`, naming the five real commands and only the
- * flags each one actually accepts. `--json` is named in the spec's
- * illustrative command surface but implemented nowhere in this CLI, so it is
- * deliberately absent here rather than promising a flag that would silently
- * do nothing.
+ * Usage text for `--help`/`-h`, naming the real commands and only the flags
+ * each one actually accepts. `--json` is listed for `ledger` alone, the one
+ * command that takes it.
  */
 const USAGE = `minos: reports what a Claude Code session changed, and which of it was ever put to you as a decision.
 
@@ -32,6 +31,7 @@ const USAGE = `minos: reports what a Claude Code session changed, and which of i
   minos sessions --all                                every project, with totals
   minos export [--session <id>] [--project <path>]    the ledger as data
   minos export --all                                  every project's counts as data
+  minos ledger [--session <id>] [--project <path>] [--json]   what changed without being asked, as text or data
 
   --since <YYYY-MM-DD> and --until <YYYY-MM-DD> bound sessions, export and --all
   to local calendar days, both inclusive.`
@@ -156,6 +156,11 @@ export async function main(argv: string[]): Promise<number> {
     return 2
   }
 
+  if (args.includes('--json') && command !== 'ledger') {
+    console.error('minos: --json only applies to ledger')
+    return 2
+  }
+
   const projectFlag = flag(args, 'project')
   if (projectFlag.given && projectFlag.value === null) {
     console.error('minos: --project needs a path')
@@ -249,6 +254,13 @@ export async function main(argv: string[]): Promise<number> {
   if (command === 'undone') show(await runUndone(paths))
   // Not `show`: export is JSON for a program to parse, so it never gets escapes.
   else if (command === 'export') console.log(await runExport(paths, window))
+  // Same for the JSON ledger; the text form is a report-shaped view and is coloured like one.
+  else if (command === 'ledger') {
+    const json = args.includes('--json')
+    const out = await runLedger(paths, json)
+    if (json) console.log(out)
+    else show(out)
+  }
   else if (command === 'file') show(await runFile(paths, target as string))
   else show(await runReport(paths))
 

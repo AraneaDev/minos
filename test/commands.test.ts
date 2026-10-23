@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { resolveSession, runReport } from '../src/commands/report'
+import { runLedger } from '../src/commands/ledger'
 import { runUndone } from '../src/commands/undone'
 import { runFile } from '../src/commands/file'
 import { chmod } from 'node:fs/promises'
@@ -29,6 +30,17 @@ test('undone prints only the changes that did not survive', async () => {
   const text = await runUndone(paths)
   expect(text).toContain('reverted')
   expect(text).not.toContain('BY PROMPT')
+})
+
+test('ledger text and json agree on the counts, and json parses', async () => {
+  const view = JSON.parse(await runLedger(paths, true))
+  const c = view.counts
+  const text = await runLedger(paths, false)
+  expect(text).toContain(`decided ${c.decided}  auto ${c.auto}  subagent ${c.subagent}  undone ${c.undone}`)
+  expect(c.decided).toBeGreaterThan(0)
+  expect(c.auto).toBeGreaterThan(0)
+  expect(text).toContain(view.decidedNote)
+  for (const f of view.unaskedFiles) expect(text).toContain(f.file)
 })
 
 test('export emits parseable json carrying the totals', async () => {
