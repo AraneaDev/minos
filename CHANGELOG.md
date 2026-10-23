@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.10](https://github.com/AraneaDev/minos/compare/v0.0.9...v0.0.10) (2026-10-23)
+
+
+### Features
+
+* **mod:** show each prompt's files and each change's diff in the pane ([#20](https://github.com/AraneaDev/minos/issues/20)) ([bbef0b6](https://github.com/AraneaDev/minos/commit/bbef0b6d0cf5eb513f9b99a017fe88a1f56f34b6))
+
 ## [0.0.9](https://github.com/AraneaDev/minos/compare/v0.0.8...v0.0.9) (2026-10-23)
 
 
