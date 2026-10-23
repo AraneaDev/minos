@@ -12,7 +12,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/AraneaDev/minos?label=last%20commit)](https://github.com/AraneaDev/minos/commits/main)
 [![Conventional Commits](https://img.shields.io/badge/commits-conventional-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/)
 [![Status](https://img.shields.io/badge/status-pre--release-orange)](#status)
-[![Tests](https://img.shields.io/badge/tests-153%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-412%20passing-brightgreen)](#development)
 
 </div>
 
@@ -23,23 +23,52 @@
 > did. This tool weighs something smaller: what an agent session actually changed in your
 > repository, and which of it was ever put in front of you.
 
+![A Claude Code session with the Minos pane docked beside it: the chat on the left shows the
+prompts and the edits as they happen, and the pane on the right counts one file changed under auto
+and one inside a subagent, lists the five prompts that changed something, and shows every change
+to src/checkout.ts as a diff](docs/images/session.svg)
+
+Type `/minos` in Claude Code and a pane opens beside the chat. It shows what this session changed
+while the session runs: which changes were put to you as a decision, which were applied without
+asking, which happened inside a subagent whose diff never reached your terminal, and which did
+not survive. Press a file to see its changes as diffs, or a prompt to see what it changed.
+
 **TL;DR:** Minos reconstructs what an agent session changed and whether Claude Code would have
 shown each change for a decision. It reads Claude Code transcripts, classifies `Edit`, `Write`,
 and `NotebookEdit` operations by permission mode and subagent context, and tracks changes that did
-not survive to the final working tree.
-
-Every change is sorted into one of three classes: the ones submitted in a mode where Claude Code
-stops and asks, the ones applied without asking because the session was in `acceptEdits`, and the
-ones applied inside a subagent whose diff never rendered in your terminal at all.
-
-It also reports the changes that did not survive the session. A fix applied at 19:02 and
-overwritten at 19:41 by a later turn working on something else is invisible in the final diff,
-because the final diff only shows the last state. Minos has both, and names the prompt behind each
-wherever the transcript lets it.
+not survive to the final working tree. It shows that live in a pane, gives the agent the same
+ledger as a tool, and answers for any past session from the command line.
 
 Nothing is captured while you work: the live view's hooks read only the transcript Claude Code
 already writes. Because that transcript is all Minos reads, it can also answer for sessions that
 happened before you installed it, for as long as Claude Code still keeps their transcripts.
+
+## Live in a session
+
+- `/minos` opens the pane. A band of tiles counts the decided, auto, subagent and undone
+  changes. Under it are the files changed without you being asked, the prompts that changed
+  something, the changes that did not survive, and this repository's earlier sessions. It
+  refreshes after each change and at the end of each turn while it is open.
+- Press a file and the pane shows each of its changes as a diff, drawn by Claude Code's own diff
+  view, with the time, the class and the prompt behind it. Press a prompt to see the files it
+  changed, or an earlier session to see its ledger.
+- The agent gets a `minos_ledger` tool with the same ledger as text. Its description asks the
+  agent to call it before saying the work is done, and before writing a commit message or a PR
+  description, so a summary cannot leave out what a subagent changed.
+- When an Edit or Write undoes a change the session made earlier, the agent reads one line about
+  it with that tool's result, and you get the same line as a toast and in the pane. Nothing is
+  ever blocked. The check covers Edit and Write, not NotebookEdit, and it gives up after 1.5
+  seconds, so on a transcript of hundreds of megabytes the line can be missing.
+
+All three ask the CLI and show what it prints, so the pane and the tool use the same counts and
+wording as `minos report`. The pane can trail the transcript by a second or so after a change.
+They need Claude Code 2.1.309 or newer, which runs a plugin's hooks module. On an older version
+the CLI and `/minos:report` work as before.
+
+## After the fact
+
+`/minos:report`, or `minos report` on the command line, prints the whole account of a session,
+including one that ended weeks ago:
 
 ![The minos report for the session that built Minos: 57 files changed, none of them decided, 54 of
 them applied inside a subagent, and 28 changes that did not survive the
@@ -178,29 +207,6 @@ those commands are never counted in the classes.
 
 In Claude Code, `/minos:report` prints the report for the session you are in.
 
-## Live in a session
-
-The plugin also shows the ledger while the session runs, for you and for the agent:
-
-![The Minos pane for the session that built it: 29 files changed under auto, 4 inside a subagent,
-none decided, 6 changes that did not survive, and the ten most recent files with a press to show
-all 32](docs/images/pane.svg)
-
-- `/minos` opens a pane beside the chat with the session's decided, auto, subagent and
-  undone counts and the files changed without you being asked. While it is open it refreshes
-  after each change and at the end of each turn, and pressing a file shows that file's history.
-- The agent gets a `minos_ledger` tool with the same text. Its description asks the agent to
-  call it before saying the work is done, and before writing a commit message or a PR
-  description, so a summary cannot leave out what a subagent changed.
-- When an Edit or Write undoes a change the session made earlier, the agent reads one line about
-  it with that tool's result, and you get the same line as a toast and in the pane. Nothing is
-  ever blocked. The check covers Edit and Write, not NotebookEdit, and it gives up after 1.5
-  seconds, so on a transcript of hundreds of megabytes the line can be missing.
-
-All three ask the CLI and show what it prints, so the pane and the tool use the same counts and
-wording as `minos report`. The pane can trail the transcript by a second or so after a change. They need Claude Code 2.1.309 or newer, which runs a plugin's hooks module. On an
-older version the CLI and `/minos:report` work as before.
-
 ## What it does not do
 
 - It does not review the code it reports on. Momus, Chaos and Knossos do that.
@@ -245,6 +251,8 @@ bun install
 bun run check      # lint, lint:docs, typecheck, knip, then the full suite with coverage
 bun run fp         # the attribution harness: plants a known answer, asserts Minos finds it
 bun run test:mod   # the live view's own tests, under claude plugin test
+bun run scripts/session-svg.ts <transcript> <session> <project> docs/images/session.svg <file>
+                   # redraws the README's session image from a real session
 ```
 
 ## License
