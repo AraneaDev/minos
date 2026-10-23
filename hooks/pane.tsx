@@ -6,7 +6,7 @@ import { forSession } from './minos'
 /** The pane's id. */
 export const PANE = 'minos-ledger'
 /** The slash command that opens the pane. */
-export const COMMAND = 'minos-live'
+export const COMMAND = 'minos'
 
 // Change a tag when that value's type changes: it declines what an earlier
 // version kept in the session, which outlives a reload.
@@ -70,7 +70,7 @@ const quiet = (line: string): boolean =>
   line.startsWith('(') || line.startsWith('decided is inferred') || line.startsWith('Left out')
 
 /**
- * The pane beside the chat: `/minos-live` opens it, and it shows the same
+ * The pane beside the chat: `/minos` opens it, and it shows the same
  * `minos ledger` text the agent's tool returns, refreshed after every change
  * and at the end of each turn, never on a tool call's own path. The tool
  * calls that schedule a refresh are hooked in register.tsx, beside the undo note.

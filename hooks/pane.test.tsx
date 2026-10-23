@@ -18,12 +18,12 @@ const LEDGER_TEXT = [
   '  src/a.ts                                 auto      1 change',
 ].join('\n')
 
-/** The `/minos-live` command as a person runs it at the terminal prompt. */
-const LIVE = { command: 'minos-live', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 160 } } as const
+/** The `/minos` command as a person runs it at the terminal prompt. */
+const LIVE = { command: 'minos', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 160 } } as const
 
 const ledgerRuns = (runs: { argv: readonly string[] }[]) => runs.filter((r) => r.argv[2] === 'ledger').length
 
-test('/minos-live opens the pane and it shows the ledger the CLI prints, on every surface', async ($, on) => {
+test('/minos opens the pane and it shows the ledger the CLI prints, on every surface', async ($, on) => {
   engine(on, () => ({ exitCode: 0, stdout: `${LEDGER_TEXT}\n` }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   mock.clock(on)

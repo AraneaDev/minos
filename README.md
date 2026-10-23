@@ -176,13 +176,13 @@ classifier refusal or missing verdict, or a user rejection. A command that ran a
 (`Exit code N`) stays in, since it may have written before it failed. It is a loose heuristic, and
 those commands are never counted in the classes.
 
-In Claude Code, `/minos` prints the report for the session you are in.
+In Claude Code, `/minos:report` prints the report for the session you are in.
 
 ## Live in a session
 
 The plugin also shows the ledger while the session runs, for you and for the agent:
 
-- `/minos-live` opens a pane beside the chat with the session's decided, auto, subagent and
+- `/minos` opens a pane beside the chat with the session's decided, auto, subagent and
   undone counts and the files changed without you being asked. It refreshes after each change
   and at the end of each turn.
 - The agent gets a `minos_ledger` tool with the same text. Its description asks the agent to
@@ -195,7 +195,7 @@ The plugin also shows the ledger while the session runs, for you and for the age
 
 All three ask the CLI and show what it prints, so the pane, the tool and `minos report` never
 disagree. They need Claude Code 2.1.309 or newer, which runs a plugin's hooks module. On an
-older version the CLI and `/minos` work as before.
+older version the CLI and `/minos:report` work as before.
 
 ## What it does not do
 
@@ -208,7 +208,7 @@ older version the CLI and `/minos` work as before.
 
 ## Install
 
-In Claude Code, as a plugin, which is where `/minos` comes from:
+In Claude Code, as a plugin, which is where `/minos` and `/minos:report` come from:
 
 <!-- aranea-install:start -->
 Install from the Aranea marketplace:
