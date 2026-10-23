@@ -307,6 +307,22 @@ describe('commands that resolve a session against the transcript store', () => {
     expect((limited ?? '').split('\n')).toEqual([lines[1]])
   })
 
+  test('sessions lists every session of a project recorded under two paths, and says so once', async () => {
+    const cwd = '/home/tim/site'
+    const projectDir = join(root, 'projects', encodeProjectSlug(cwd))
+    await mkdir(projectDir, { recursive: true })
+    const record = (id: string, recorded: string) =>
+      JSON.stringify({ type: 'user', uuid: `${id}-u`, parentUuid: null, promptId: `${id}-p`, permissionMode: 'default', timestamp: '2026-09-01T10:00:00Z', sessionId: id, cwd: recorded, message: { content: 'hi' } })
+    await writeFile(join(projectDir, 'sess-001.jsonl'), record('sess-001', '/root/site'))
+    await writeFile(join(projectDir, 'sess-002.jsonl'), record('sess-002', cwd))
+
+    const lines = ((await runSessions(cwd, 10)) ?? '').split('\n')
+    const notice = 'recorded under 2 paths: /home/tim/site, /root/site'
+    expect(lines[0]).toBe(notice)
+    expect(lines.filter((l) => l === notice).length).toBe(1)
+    expect(lines.filter((l) => /^sess-00\d /.test(l)).length).toBe(2)
+  })
+
   // Ruling A1: a bad --limit must fail loudly rather than silently reporting
   // on everything. `Number('abc')` is NaN, and `.slice(-NaN)` behaves like
   // `.slice(0)`, so the unvalidated code returns every session; `Number('0')`

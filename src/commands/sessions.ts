@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { projectDirFor, sessionFiles, subagentFiles } from '../paths'
+import { projectFor, sessionFiles, subagentFiles } from '../paths'
 import { analyseSession } from '../session'
 
 /**
@@ -12,6 +12,9 @@ import { analyseSession } from '../session'
  * This reads one more directory per row than the earlier version did, which
  * is why `--limit` exists and defaults to a small number of rows.
  *
+ * When the project's transcripts record more than one cwd (a moved or
+ * renamed repository), the first line says so once, ahead of the rows.
+ *
  * Returns null when the directory has no transcripts at all, rather than a
  * line of prose (Finding 7). An error message returned as the result was
  * printed to stdout with a success exit code, so a caller piping this
@@ -20,11 +23,13 @@ import { analyseSession } from '../session'
  * same exit code as every other command's version of this failure.
  */
 export async function runSessions(cwd: string, limit: number): Promise<string | null> {
-  const dir = await projectDirFor(cwd)
-  if (dir === null) return null
+  const project = await projectFor(cwd)
+  if (project === null) return null
+  const { dir } = project
   const files = (await sessionFiles(dir)).slice(-limit)
   if (files.length === 0) return null
   const rows: string[] = []
+  if (project.cwds.length > 1) rows.push(`recorded under ${project.cwds.length} paths: ${project.cwds.join(', ')}`)
   for (const transcript of files) {
     const sessionId = basename(transcript, '.jsonl')
     const subagents = await subagentFiles(dir, sessionId)

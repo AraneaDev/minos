@@ -121,38 +121,63 @@ async function recordedCwd(path: string): Promise<string | null> {
   return null
 }
 
+/** A project directory and every cwd its transcripts record, sorted. */
+export interface ProjectMatch {
+  dir: string
+  cwds: string[]
+}
+
 /**
- * The project directory for a working directory. Tries the encoded name
- * first, verifying it against the cwd recorded in its own transcript, and
- * falls back to scanning every project directory for one whose transcript
- * records this cwd, because the encoding is a guess and a wrong guess would
- * report on somebody else's project without saying so.
- *
- * The two paths apply the recovered cwd differently. On the encoded guess,
- * the directory name itself is evidence: if its transcript records a
- * different cwd the guess is rejected, but if none is recoverable at all the
- * guess is still accepted, since refusing it would make Minos report nothing
- * on a legitimate, if short or unusual, transcript. On the fallback scan
- * there is no such prior evidence, so only an exact match is accepted; a
- * candidate with an unrecoverable cwd is skipped rather than guessed at.
+ * The distinct cwds recorded across every transcript in a project directory,
+ * sorted. Transcripts are read newest first, each with the same bounded head
+ * read as `recordedCwd`, so a directory is never read whole. A repository
+ * that was moved or renamed records more than one path here, and a missing
+ * directory or an unreadable transcript contributes nothing rather than
+ * throwing.
  */
-export async function projectDirFor(cwd: string): Promise<string | null> {
+export async function recordedCwds(projectDir: string): Promise<string[]> {
+  const found = new Set<string>()
+  for (const file of (await sessionFiles(projectDir)).reverse()) {
+    const recorded = await recordedCwd(file)
+    if (recorded !== null) found.add(recorded)
+  }
+  return [...found].sort()
+}
+
+/**
+ * The project for a working directory. Tries the encoded name first,
+ * verifying it against the cwds recorded in its own transcripts, and falls
+ * back to scanning every project directory for one whose transcripts record
+ * this cwd, because the encoding is a guess and a wrong guess would report on
+ * somebody else's project without saying so.
+ *
+ * Any transcript may carry the cwd, not just the oldest: a project that was
+ * moved records its old path in early sessions and the new one in later ones.
+ *
+ * The two paths apply the recovered cwds differently. On the encoded guess,
+ * the directory name itself is evidence: it is rejected only when cwds were
+ * recovered and none equals this one, and accepted when none is recoverable
+ * at all, since refusing it would make Minos report nothing on a legitimate,
+ * if short or unusual, transcript. On the fallback scan there is no such
+ * prior evidence, so a directory is accepted only when a transcript records
+ * exactly this cwd; the first such directory wins, and within it the heads
+ * are read only until the first match.
+ */
+export async function projectFor(cwd: string): Promise<ProjectMatch | null> {
   const root = join(claudeHome(), 'projects')
 
   const guess = join(root, encodeProjectSlug(cwd))
-  const guessFiles = await sessionFiles(guess)
-  if (guessFiles.length > 0) {
-    const recorded = await recordedCwd(guessFiles[0]!)
-    if (recorded === null || recorded === cwd) return guess
+  if ((await sessionFiles(guess)).length > 0) {
+    const cwds = await recordedCwds(guess)
+    if (cwds.length === 0 || cwds.includes(cwd)) return { dir: guess, cwds }
   }
 
   const names = await readdir(root).catch(() => [] as string[])
   for (const name of names) {
     const candidate = join(root, name)
-    const [first] = await sessionFiles(candidate)
-    if (first === undefined) continue
-    const recorded = await recordedCwd(first)
-    if (recorded === cwd) return candidate
+    for (const file of (await sessionFiles(candidate)).reverse()) {
+      if ((await recordedCwd(file)) === cwd) return { dir: candidate, cwds: await recordedCwds(candidate) }
+    }
   }
   return null
 }
