@@ -6,11 +6,12 @@ import { runExport, runExportAll } from './commands/export'
 import { runFile } from './commands/file'
 import { runLedger } from './commands/ledger'
 import { runSessions } from './commands/sessions'
+import { runUndoes, parseProposed } from './commands/undoes'
 import { runUndone } from './commands/undone'
 import { claudeHome } from './paths'
 import type { Window } from './window'
 
-const COMMANDS = ['report', 'file', 'undone', 'sessions', 'export', 'ledger'] as const
+const COMMANDS = ['report', 'file', 'undone', 'sessions', 'export', 'ledger', 'undoes'] as const
 
 const FLAG_NAMES = ['project', 'session', 'limit', 'since', 'until'] as const
 
@@ -32,6 +33,7 @@ const USAGE = `minos: reports what a Claude Code session changed, and which of i
   minos export [--session <id>] [--project <path>]    the ledger as data
   minos export --all                                  every project's counts as data
   minos ledger [--session <id>] [--project <path>] [--json]   what changed without being asked, as text or data
+  minos undoes [--session <id>] [--project <path>]   reads one Edit or Write as JSON on stdin, prints the earlier changes it ends
 
   --since <YYYY-MM-DD> and --until <YYYY-MM-DD> bound sessions, export and --all
   to local calendar days, both inclusive.`
@@ -136,7 +138,7 @@ function show(text: string): void {
 }
 
 /** Entry point. Returns the exit code rather than calling exit, so it is testable. */
-export async function main(argv: string[]): Promise<number> {
+export async function main(argv: string[], stdin?: () => Promise<string>): Promise<number> {
   // Checked before any command dispatch: a leading flag is not a recognised
   // command name, so without this it falls through to the default `report`
   // command and either prints a real report or "no transcript found",
@@ -234,6 +236,15 @@ export async function main(argv: string[]): Promise<number> {
     return 0
   }
 
+  let undoesInput = ''
+  if (command === 'undoes') {
+    undoesInput = stdin === undefined ? await Bun.stdin.text() : await stdin()
+    if (parseProposed(undoesInput) === null) {
+      console.error('minos: undoes reads one change as JSON on stdin')
+      return 2
+    }
+  }
+
   const target = positional(args)[0]
   if (command === 'file' && target === undefined) {
     console.error('minos: usage: minos file <path>')
@@ -251,7 +262,11 @@ export async function main(argv: string[]): Promise<number> {
   }
   const paths = lookup.paths
 
-  if (command === 'undone') show(await runUndone(paths))
+  if (command === 'undoes') {
+    const result = await runUndoes(paths, undoesInput)
+    console.log(result.out)
+    return result.code
+  } else if (command === 'undone') show(await runUndone(paths))
   // Not `show`: export is JSON for a program to parse, so it never gets escapes.
   else if (command === 'export') console.log(await runExport(paths, window))
   // Same for the JSON ledger; the text form is a report-shaped view and is coloured like one.

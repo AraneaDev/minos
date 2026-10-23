@@ -87,7 +87,7 @@ export function buildLedgerView(report: SessionReport): LedgerView {
 }
 
 /** A path relative to the session directory when it is inside it, the whole path otherwise. */
-function shown(file: string, cwd: string): string {
+export function shown(file: string, cwd: string): string {
   const root = cwd.endsWith('/') ? cwd : `${cwd}/`
   return cwd !== '' && file.startsWith(root) && file.length > root.length ? file.slice(root.length) : file
 }

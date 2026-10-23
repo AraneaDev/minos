@@ -395,3 +395,25 @@ test('minos ledger --json prints parseable JSON for the latest session', async (
     logSpy.mockRestore()
   }
 })
+
+test('minos undoes exits 2 on malformed stdin and prints a JSON array for a valid change', async () => {
+  const cwd = '/root/fake-undoes-cli'
+  const projectDir = join(configDir, 'projects', encodeProjectSlug(cwd))
+  await mkdir(projectDir, { recursive: true })
+  await writeFile(
+    join(projectDir, 'sess-1.jsonl'),
+    `${JSON.stringify({ type: 'user', uuid: 'u1', parentUuid: null, promptId: 'p1', permissionMode: 'default', timestamp: '2026-10-23T18:51:00Z', cwd, sessionId: 'sess-1', message: { content: 'hi' } })}\n`,
+  )
+  const errSpy = spyOn(console, 'error').mockImplementation(() => {})
+  const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['undoes', '--project', cwd], async () => '{nope')).toBe(2)
+    expect(errSpy).toHaveBeenCalledWith('minos: undoes reads one change as JSON on stdin')
+    const change = JSON.stringify({ kind: 'edit', file: '/x', old_string: 'a', new_string: 'b' })
+    expect(await main(['undoes', '--project', cwd], async () => change)).toBe(0)
+    expect(JSON.parse((logSpy.mock.calls[0] as [string])[0])).toEqual([])
+  } finally {
+    errSpy.mockRestore()
+    logSpy.mockRestore()
+  }
+})
