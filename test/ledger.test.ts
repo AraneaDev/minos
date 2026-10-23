@@ -108,7 +108,7 @@ function shellWritesFor(command: string) {
   return ledger
 }
 
-test.each(['sed -i s/a/b/ f', 'echo x > f', 'echo x > src/a.ts', 'echo x >> f', 'cat a | tee out.txt', 'mv a b', 'rm f', 'rm src/old.ts', 'echo x > "src/a.ts"', 'echo x>f', 'ls && rm src/a.ts', 'sudo mv a b', 'find . | xargs rm', 'cat <<< foo\nrm src/bar', "cat > notes.md <<'EOF'\n=> x\nEOF"])('a shell command that writes counts: %s', (command) => {
+test.each(['sed -i s/a/b/ f', 'echo x > f', 'echo x > src/a.ts', 'echo x >> f', 'cat a | tee out.txt', 'mv a b', 'rm f', 'rm src/old.ts', 'echo x > "src/a.ts"', 'echo x>f', 'echo "done">status.txt', "printf '%s' 'x'>>log.md", '(make)>log', 'ls && rm src/a.ts', 'sudo mv a b', 'find . | xargs rm', 'cat <<< foo\nrm src/bar', "cat > notes.md <<'EOF'\n=> x\nEOF"])('a shell command that writes counts: %s', (command) => {
   const ledger = shellWritesFor(command)
   expect(ledger.shellWrites()).toEqual([{ toolUseId: 'sh1', at: '2026-09-07T19:04:00Z', attestation: 'auto' }])
   expect(ledger.operations()).toHaveLength(0)

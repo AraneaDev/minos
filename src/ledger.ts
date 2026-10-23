@@ -18,7 +18,7 @@ const HEREDOC = /((?<!<)<<(?!<)-?[ \t]*(['"]?)(\w+)\2[^\n]*)\n[\s\S]*?(?:\n[ \t]
 const HOLE = /\u0001(\d+)\u0001/g
 
 /** A redirect used as a shell operator, with its target: not `=>`, `->`, `<>`, `>=` or `>&2`. */
-const REDIRECT = /(^|[\s;|&(\w])(\d?)>>?(?![=&])[ \t]*(\S+)/g
+const REDIRECT = /(^|[\s;|&()\w\u0001])(\d?)>>?(?![=&])[ \t]*(\S+)/g
 
 /** How far back from a `>` the word it closes is looked at, which keeps the check linear. */
 const TYPE_LOOKBACK = 256
