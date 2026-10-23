@@ -64,14 +64,14 @@ test('pressing a file in the pane shows its history', async ($, on) => {
 })
 
 test('the pane says so when Minos could not run', async ($, on) => {
-  engine(on, () => ({ exitCode: 1, stderr: 'minos: no transcript found for /repo\n' }))
+  engine(on, () => ({ exitCode: 2, stderr: 'minos: something broke\n' }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   const clock = mock.clock(on)
   await start($)
   await $.command.run(OPEN)
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: /could not run/ }))?.text).toContain('minos: no transcript found for /repo')
+  expect((await ui.find({ type: 'Text', text: /could not run/ }))?.text).toContain('minos: something broke')
   await ui.unmount()
 })
 
@@ -121,4 +121,17 @@ test('a refresh asked for while one runs causes exactly one more after it', asyn
   release()
   await clock.settle()
   expect(ledgerRuns(runs)).toBe(2)
+})
+
+test('a session with no transcript yet reads as No changes yet., not as a failure', async ($, on) => {
+  engine(on, () => ({ exitCode: 1, stderr: 'minos: no transcript found for /repo\n' }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const clock = mock.clock(on)
+  await start($)
+  await $.command.run(OPEN)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /No changes yet/ }))?.text).toBe('No changes yet.')
+  expect(await ui.find({ type: 'Text', text: /could not run/ })).toBeUndefined()
+  await ui.unmount()
 })

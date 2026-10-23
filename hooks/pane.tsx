@@ -37,6 +37,9 @@ let pending: { cancel: () => void } | null = null
 let running = false
 let again = false
 
+/** What the pane shows for a session that has no transcript yet. */
+const EMPTY: MinosLedger = { text: 'No changes yet.', dim: [], cwd: '', files: [] }
+
 /** The ledger JSON reduced to what the pane draws, or null when it does not read as one. */
 function parseLedger(stdout: string): MinosLedger | null {
   try {
@@ -62,7 +65,9 @@ async function refresh($: EngineInterface): Promise<void> {
   running = true
   try {
     const run = await forSession($, ['ledger', '--json'])
-    const ledger = run.ok ? parseLedger(run.stdout) : null
+    // Claude Code writes a session's transcript with its first prompt, so a
+    // pane opened before then finds none: that is an empty session, not a fault.
+    const ledger = run.ok ? parseLedger(run.stdout) : run.error.includes('no transcript found') ? EMPTY : null
     if (ledger !== null) {
       await update($, view, () => ledger)
       await update($, error, () => null)
