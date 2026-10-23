@@ -247,3 +247,32 @@ test('shell writes carry decided and subagent labels, and a window keeps only th
     },
   )
 })
+
+test('a failed Edit is out of the totals, the operations and undone, and its failedChanges entry follows the window', async () => {
+  const failure = { type: 'user', uuid: 'r2', parentUuid: 'a2', timestamp: '2026-09-07T09:02:01Z', message: { content: [{ type: 'tool_result', tool_use_id: 't-a2', is_error: true, content: '<tool_use_error>String to replace not found in file.</tool_use_error>' }] } }
+  await withTranscripts(
+    {
+      'main.jsonl': [
+        userPrompt('default', '2026-09-07T09:00:00Z'),
+        call('a1', '2026-09-07T09:01:00Z', 'Write', { file_path: '/repo/a.ts', content: 'one\n' }),
+        call('a2', '2026-09-07T09:02:00Z', 'Edit', { file_path: '/repo/a.ts', old_string: 'one', new_string: 'two' }),
+        failure,
+        call('a3', '2026-09-09T09:00:00Z', 'Edit', { file_path: '/repo/a.ts', old_string: 'two', new_string: 'one' }),
+      ],
+    },
+    async (path) => {
+      const paths = { transcript: path('main.jsonl'), subagents: [] }
+      const open = await analyseSession(paths)
+      expect(open.operations.map((o) => o.toolUseId)).toEqual(['t-a1', 't-a3'])
+      expect(open.totals.decided).toEqual({ files: 1, added: 2, removed: 1 })
+      expect(open.undone).toEqual([])
+      expect(open.failedChanges).toEqual([{ toolUseId: 't-a2', at: '2026-09-07T09:02:00Z' }])
+      const before = await analyseSession(paths, { window: { since: null, until: '2026-09-08' } })
+      expect(before.failedChanges.map((f) => f.toolUseId)).toEqual(['t-a2'])
+      expect(before.operations.map((o) => o.toolUseId)).toEqual(['t-a1'])
+      const after = await analyseSession(paths, { window: { since: '2026-09-08', until: null } })
+      expect(after.failedChanges).toEqual([])
+      expect(after.operations.map((o) => o.toolUseId)).toEqual(['t-a3'])
+    },
+  )
+})
