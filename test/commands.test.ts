@@ -40,7 +40,7 @@ test('ledger text and json agree on the counts, and json parses', async () => {
   expect(c.decided).toBeGreaterThan(0)
   expect(c.auto).toBeGreaterThan(0)
   expect(text).toContain(view.decidedNote)
-  for (const f of view.unaskedFiles) expect(text).toContain(f.file)
+  for (const f of view.unaskedFiles) expect(text).toContain(f.file.replace(`${view.cwd}/`, ''))
 })
 
 test('export emits parseable json carrying the totals', async () => {

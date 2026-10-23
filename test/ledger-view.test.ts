@@ -101,10 +101,10 @@ test('renders the counts, the units line, the file list and the undone list', ()
   expect(text).toContain('decided 0  auto 1  subagent 1  undone 1')
   expect(text).toContain('(decided, auto and subagent count files; undone counts changes)')
   expect(text).toContain('changed without being asked')
-  expect(text).toMatch(/\/r\/b\.ts\s+subagent\s+1 change\n/)
-  expect(text).toMatch(/\/r\/a\.ts\s+auto\s+2 changes\n/)
+  expect(text).toMatch(/^ {2}b\.ts\s+subagent\s+1 change$/m)
+  expect(text).toMatch(/^ {2}a\.ts\s+auto\s+2 changes$/m)
   expect(text).toContain('did not survive')
-  expect(text).toContain('overwritten  18:51 (prompt 2), replaced 18:58')
+  expect(text).toMatch(/a\.ts\s+overwritten {2}18:51 \(prompt 2\), replaced 18:58/)
 })
 
 test('renders zeros, the units line and no file list for a session with no changes', () => {
@@ -130,7 +130,7 @@ test('prints the decided caveat only when decided > 0, and the failed line only 
 test('sanitises file paths before printing', () => {
   const text = renderLedger(buildLedgerView(report([op('t1', { file: '/r/ev‮il.ts' })])))
   expect(text).not.toContain('‮')
-  expect(text).toContain('/r/evil.ts')
+  expect(text).toContain('  evil.ts')
 })
 
 test('orders undone changes most recent first and keeps the label of the latest change', () => {
@@ -152,4 +152,26 @@ test('orders undone changes most recent first and keeps the label of the latest 
     ['/r/a.ts', '2026-10-23T18:52:00Z'],
   ])
   expect(renderLedger(view)).toContain('(unattributed)')
+})
+
+test('prints paths inside the session directory relative to it and others in full', () => {
+  const text = renderLedger(buildLedgerView(report([op('t1', { file: '/r/src/a.ts' }), op('t2', { file: '/elsewhere/b.ts' })])))
+  expect(text).toMatch(/^ {2}src\/a\.ts +auto/m)
+  expect(text).not.toContain('/r/src/a.ts')
+  expect(text).toMatch(/^ {2}\/elsewhere\/b\.ts +auto/m)
+})
+
+test('keeps absolute files and the cwd in the data', () => {
+  const view = buildLedgerView(report([op('t1', { file: '/r/src/a.ts' })]))
+  expect(view.cwd).toBe('/r')
+  expect(view.unaskedFiles[0]?.file).toBe('/r/src/a.ts')
+})
+
+test('truncates a long undone path with the ellipsis', () => {
+  const file = `/r/${'deep/'.repeat(12)}file.ts`
+  const a = op('t1', { file })
+  const b = op('t2', { file })
+  const text = renderLedger(buildLedgerView(report([a, b], { undone: [{ file, kind: 'reverted', line: null, introduced: a, undoneBy: b }] })))
+  expect(text).toMatch(/^ {2}….*file\.ts +reverted/m)
+  expect(text).not.toContain(file)
 })

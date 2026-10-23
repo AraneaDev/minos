@@ -24,6 +24,8 @@ interface LedgerUndone {
 /** A session's ledger reduced to what a live view shows. */
 export interface LedgerView {
   sessionId: string
+  /** The directory the session ran in; paths inside it print relative to it. */
+  cwd: string
   startedAt: string | null
   /** Files per class and undone in changes, as `minos sessions` counts them. */
   counts: { decided: number; auto: number; subagent: number; undone: number }
@@ -61,6 +63,7 @@ export function buildLedgerView(report: SessionReport): LedgerView {
     id === null ? null : (report.prompts.find((p) => p.id === id)?.index ?? null)
   return {
     sessionId: report.sessionId,
+    cwd: report.cwd,
     startedAt: report.startedAt,
     counts: {
       decided: report.totals.decided.files,
@@ -83,6 +86,12 @@ export function buildLedgerView(report: SessionReport): LedgerView {
   }
 }
 
+/** A path relative to the session directory when it is inside it, the whole path otherwise. */
+function shown(file: string, cwd: string): string {
+  const root = cwd.endsWith('/') ? cwd : `${cwd}/`
+  return cwd !== '' && file.startsWith(root) && file.length > root.length ? file.slice(root.length) : file
+}
+
 /**
  * The ledger as text, in the report's own wording and helpers. Times are
  * counted from the session's start, so a change from an earlier day carries
@@ -100,14 +109,14 @@ export function renderLedger(view: LedgerView): string {
   if (view.unaskedFiles.length > 0) {
     out.push('', 'changed without being asked')
     for (const f of view.unaskedFiles) {
-      out.push(`  ${pathCol(sanitise(f.file), 40)}${f.label.padEnd(9)} ${plural(f.changes, 'change', 'changes')}`.trimEnd())
+      out.push(`  ${pathCol(sanitise(shown(f.file, view.cwd)), 40)}${f.label.padEnd(9)} ${plural(f.changes, 'change', 'changes')}`.trimEnd())
     }
   }
   if (view.undone.length > 0) {
     out.push('', 'did not survive')
     for (const u of view.undone) {
       const ref = u.introducedPrompt === null ? '(unattributed)' : `prompt ${u.introducedPrompt}`
-      out.push(`  ${sanitise(u.file)}  ${u.kind}  ${clock(u.introducedAt, origin)} (${ref}), replaced ${clock(u.undoneAt, origin)}`)
+      out.push(`  ${pathCol(sanitise(shown(u.file, view.cwd)), 40)}${u.kind}  ${clock(u.introducedAt, origin)} (${ref}), replaced ${clock(u.undoneAt, origin)}`)
     }
   }
   const notes: string[] = []
