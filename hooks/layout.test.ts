@@ -82,3 +82,15 @@ test('when only the file name fits, an ellipsis stands for the dropped folders',
   expect(fitPath('a/b/name.ts', 8)).toEqual({ dir: '…', name: 'name.ts' })
   expect(fitPath('a/b/name.ts', 6)).toEqual({ dir: '', name: 'name.…' })
 })
+
+test('a long file list folds after ten, behind a press that shows them all', () => {
+  const many = { ...LEDGER, files: Array.from({ length: 14 }, (_, i) => ({ file: `/repo/f${i}.ts`, shown: `f${i}.ts`, label: 'auto' as const, changes: '1 change' })) }
+  const folded = paneRows(many, [], null, 100)
+  expect(folded.filter((r) => r.key.startsWith('file:'))).toHaveLength(10)
+  const toggle = folded.find((r) => r.key === 'files-toggle')!
+  expect(toggle.segments.map((s) => s.text).join('')).toContain('show all 14 · 4 more')
+  expect(toggle.segments.find((s) => s.press !== undefined)?.press).toBe('files:toggle')
+  const open = paneRows(many, [], null, 100, [], true)
+  expect(open.filter((r) => r.key.startsWith('file:'))).toHaveLength(14)
+  expect(open.find((r) => r.key === 'files-toggle')!.segments.map((s) => s.text).join('')).toContain('show fewer')
+})

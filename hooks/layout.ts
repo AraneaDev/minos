@@ -26,6 +26,10 @@ const HUE = { decided: 'success', auto: 'warning', subagent: 'suggestion', undon
 export const FILE_PRESS = 'file:'
 /** A press that opens another session's ledger: its id carries the session id. */
 export const SESSION_PRESS = 'session:'
+/** The press that shows every changed file, or folds the list back. */
+export const FILES_PRESS = 'files:toggle'
+/** How many changed files the card lists before it folds the rest behind a press. */
+export const FILES_FOLDED = 10
 /** The press that closes an open file history. */
 export const CLOSE_PRESS = 'history:close'
 
@@ -124,7 +128,7 @@ function fileRow(f: MinosLedger['files'][number], room: number): Row {
 }
 
 /** Everything the pane shows, as rows `room` wide. */
-export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHistory | null, room: number, earlier: MinosSession[] = []): Row[] {
+export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHistory | null, room: number, earlier: MinosSession[] = [], allFiles = false): Row[] {
   const tier = tierOf(room)
   const out: Row[] = []
   const gap = (key: string) => out.push(row(key, [], room))
@@ -156,7 +160,14 @@ export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHis
     gap('files-gap')
     const n = ledger.files.length
     out.push(ruleRow('files-head', '≡', 'Changed without asking', `${n} ${n === 1 ? 'file' : 'files'} · press one for its history`, room))
-    for (const f of ledger.files) out.push(fileRow(f, room))
+    // The most recent first; past FILES_FOLDED the rest wait behind a press, so a busy session cannot push every other card off the pane.
+    const shown = allFiles ? ledger.files : ledger.files.slice(0, FILES_FOLDED)
+    for (const f of shown) out.push(fileRow(f, room))
+    if (n > FILES_FOLDED) {
+      const label = allFiles ? 'show fewer' : `show all ${n}`
+      const rest = allFiles ? '' : ` · ${n - FILES_FOLDED} more`
+      out.push(row('files-toggle', [{ text: '  ' }, { text: label, dim: true, press: FILES_PRESS }, { text: rest, dim: true }], room))
+    }
   }
 
   if (history !== null) {

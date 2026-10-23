@@ -182,6 +182,10 @@ In Claude Code, `/minos:report` prints the report for the session you are in.
 
 The plugin also shows the ledger while the session runs, for you and for the agent:
 
+![The Minos pane for the session that built it: 29 files changed under auto, 4 inside a subagent,
+none decided, 6 changes that did not survive, and the ten most recent files with a press to show
+all 32](docs/images/pane.svg)
+
 - `/minos` opens a pane beside the chat with the session's decided, auto, subagent and
   undone counts and the files changed without you being asked. While it is open it refreshes
   after each change and at the end of each turn, and pressing a file shows that file's history.

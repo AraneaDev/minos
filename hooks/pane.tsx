@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { MinosHistory, MinosLedger, MinosSession } from '../types'
-import { CLOSE_PRESS, FILE_PRESS, SESSION_PRESS, paneRows } from './layout'
+import { CLOSE_PRESS, FILE_PRESS, FILES_PRESS, SESSION_PRESS, paneRows } from './layout'
 import type { Segment } from './layout'
 import { forSession, minos } from './minos'
 
@@ -24,6 +24,9 @@ const notes = atom({ plugin: 'minos', key: 'notes' } as const, [] as string[], {
 const isOpen = atom({ plugin: 'minos', key: 'isOpen' } as const, false, { shape: 'open-1' })
 /** The file whose history the person opened in the pane, and what `minos file` said about it. */
 const history = atom({ plugin: 'minos', key: 'history' } as const, null as MinosHistory | null, { shape: 'history-1' })
+
+/** Whether the changed-files card lists every file, or folds them after the first ten. */
+const allFiles = atom({ plugin: 'minos', key: 'allFiles' } as const, false, { shape: 'all-files-1' })
 
 /** The project's latest sessions, read when the pane opens and at each turn's end. */
 const project = atom({ plugin: 'minos', key: 'project' } as const, [] as MinosSession[], { shape: 'project-1' })
@@ -186,15 +189,17 @@ export function livePane(on: On): void {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
-    const [ledger, failed, raised, opened, earlier] = await Promise.all([read($, view), read($, error), read($, notes), read($, history), read($, project)])
+    const [ledger, failed, raised, opened, earlier, everyFile] = await Promise.all([read($, view), read($, error), read($, notes), read($, history), read($, project), read($, allFiles)])
     const room = Math.max(20, e.props.bodyColumns)
     if (failed !== null) return <Text wrap="truncate-end" color="error">Minos could not run: {failed}</Text>
     if (ledger === null) return <Text dimColor>Reading this session's ledger…</Text>
     const press = (id: string) =>
-      id === CLOSE_PRESS ? update($, history, () => null) : id.startsWith(SESSION_PRESS) ? openSession($, id.slice(SESSION_PRESS.length)) : openHistory($, id.slice(FILE_PRESS.length))
+      id === FILES_PRESS
+        ? update($, allFiles, (all) => !all)
+        : id === CLOSE_PRESS ? update($, history, () => null) : id.startsWith(SESSION_PRESS) ? openSession($, id.slice(SESSION_PRESS.length)) : openHistory($, id.slice(FILE_PRESS.length))
     return (
       <Box flexDirection="column">
-        {paneRows(ledger, raised, opened, room, earlier).map((line) => (
+        {paneRows(ledger, raised, opened, room, earlier, everyFile).map((line) => (
           <Box key={line.key} width={room} overflow="hidden">
             {line.segments.map((s) =>
               s.press === undefined ? (
