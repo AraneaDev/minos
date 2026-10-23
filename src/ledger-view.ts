@@ -101,6 +101,14 @@ export function shown(file: string, cwd: string): string {
 /** The verb a note or a ledger row uses for each way a change ends. */
 export const VERB: Record<UndoneKind, string> = { overwritten: 'replaced', reverted: 'reverted', discarded: 'discarded' }
 
+/** What each class means, in the README's terms. */
+const LEGEND = [
+  'decided   made in default or plan mode, where Claude Code asks before it writes',
+  'auto      applied without asking: acceptEdits, auto or bypassPermissions',
+  'subagent  made inside a subagent, whose diff never reached your terminal',
+  'undone    made and then ended later in the same session',
+]
+
 /** The units line under the counts. */
 const UNITS = '(decided, auto and subagent count files; undone counts changes)'
 
@@ -120,6 +128,8 @@ export interface LedgerDisplay {
   undone: { shown: string; kind: UndoneKind; verb: string; at: string; prompt: string; endedAt: string }[]
   caveats: string[]
   empty: string | null
+  /** What each count means, one line per class, for a reader who has not met the classes yet. */
+  legend: string[]
 }
 
 /** The ledger's display strings, for the text form and for a pane. */
@@ -149,6 +159,7 @@ export function ledgerDisplay(view: LedgerView): LedgerDisplay {
     })),
     caveats,
     empty: view.unaskedFiles.length === 0 && view.undone.length === 0 ? 'No changes yet.' : null,
+    legend: LEGEND,
   }
 }
 

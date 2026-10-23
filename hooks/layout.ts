@@ -5,7 +5,7 @@
  * pane's edge so nothing wraps or widens it. Pure: the words, numbers and
  * times all come from `minos ledger --json`; this only places them.
  */
-import type { MinosHistory, MinosLedger } from '../types'
+import type { MinosHistory, MinosLedger, MinosSession } from '../types'
 import { cells, fit, fitPath, spaces } from './text'
 
 /** One run of text in a row, how it is drawn, and the press it carries. */
@@ -24,6 +24,8 @@ const HUE = { decided: 'success', auto: 'warning', subagent: 'suggestion', undon
 
 /** A press that opens a file's history: its id carries the absolute path. */
 export const FILE_PRESS = 'file:'
+/** A press that opens another session's ledger: its id carries the session id. */
+export const SESSION_PRESS = 'session:'
 /** The press that closes an open file history. */
 export const CLOSE_PRESS = 'history:close'
 
@@ -122,7 +124,7 @@ function fileRow(f: MinosLedger['files'][number], room: number): Row {
 }
 
 /** Everything the pane shows, as rows `room` wide. */
-export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHistory | null, room: number): Row[] {
+export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHistory | null, room: number, earlier: MinosSession[] = []): Row[] {
   const tier = tierOf(room)
   const out: Row[] = []
   const gap = (key: string) => out.push(row(key, [], room))
@@ -139,6 +141,15 @@ export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHis
   if (ledger.empty !== null) {
     gap('empty-gap')
     out.push(row('empty', [{ text: '  ' }, { text: ledger.empty, dim: true }], room))
+    if (ledger.legend.length > 0) {
+      gap('legend-gap')
+      out.push(ruleRow('legend-head', '◇', 'What the counts mean', '', room))
+      ledger.legend.forEach((line, i) => {
+        const [word = '', ...rest] = line.split(/(?<=^\S+)\s+/)
+        const hue = (HUE as Record<string, string>)[word]
+        out.push(row(`legend-${i}`, [{ text: '  ' }, { text: word.padEnd(10), ...(hue === undefined ? {} : { color: hue }) }, { text: rest.join(' '), dim: true }], room))
+      })
+    }
   }
 
   if (ledger.files.length > 0) {
@@ -151,7 +162,7 @@ export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHis
   if (history !== null) {
     gap('history-gap')
     const lines = history.text.split('\n')
-    out.push(ruleRow('history-head', '◇', 'History', '', room))
+    out.push(ruleRow('history-head', '◇', history.file.startsWith('session ') ? `Ledger of ${history.file}` : 'History', '', room))
     out.push(row('history-close', [{ text: '  ' }, { text: '× close', dim: true, press: CLOSE_PRESS }], room))
     lines.forEach((l, i) => out.push(row(`history-${i}`, [{ text: `  ${l}` }], room)))
   }
@@ -169,6 +180,23 @@ export function paneRows(ledger: MinosLedger, notes: string[], history: MinosHis
     gap('notes-gap')
     out.push(ruleRow('notes-head', '✎', 'Noted this session', `${notes.length}`, room))
     notes.forEach((note, i) => out.push(row(`note-${i}`, [{ text: '  ' }, { text: '↻ ', color: HUE.undone }, { text: note.replace(/^Minos: this /, '') }], room)))
+  }
+
+  const others = earlier.filter((s) => s.short !== ledger.session).reverse()
+  if (others.length > 0) {
+    gap('project-gap')
+    out.push(ruleRow('project-head', '◷', 'This project', `${others.length} earlier ${others.length === 1 ? 'session' : 'sessions'} · press one for its ledger`, room))
+    for (const s of others) {
+      const c = s.counts
+      const figures: Segment[] = (['decided', 'auto', 'subagent', 'undone'] as const).flatMap((k, i): Segment[] => [
+        ...(i === 0 ? [] : [{ text: ' · ', dim: true }]),
+        { text: String(c[k]), ...(c[k] > 0 ? { color: HUE[k], bold: true } : { dim: true }) },
+        { text: ` ${k}`, dim: true },
+      ])
+      const lead: Segment[] = [{ text: '  ' }, { text: s.short, press: `${SESSION_PRESS}${s.id}` }, { text: `  ${s.first}`, dim: true }]
+      const spare = room - width(lead) - width(figures)
+      out.push(row(`project-${s.id}`, spare >= 2 ? [...lead, { text: spaces(spare) }, ...figures] : [...lead, { text: '  ' }, ...figures], room))
+    }
   }
 
   if (ledger.caveats.length > 0) {

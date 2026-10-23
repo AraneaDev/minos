@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { MinosHistory, MinosLedger } from '../types'
-import { CLOSE_PRESS, FILE_PRESS, paneRows } from './layout'
+import type { MinosHistory, MinosLedger, MinosSession } from '../types'
+import { CLOSE_PRESS, FILE_PRESS, SESSION_PRESS, paneRows } from './layout'
 import type { Segment } from './layout'
-import { forSession } from './minos'
+import { forSession, minos } from './minos'
 
 /** The pane's id. */
 export const PANE = 'minos-ledger'
@@ -24,6 +24,9 @@ const notes = atom({ plugin: 'minos', key: 'notes' } as const, [] as string[], {
 const isOpen = atom({ plugin: 'minos', key: 'isOpen' } as const, false, { shape: 'open-1' })
 /** The file whose history the person opened in the pane, and what `minos file` said about it. */
 const history = atom({ plugin: 'minos', key: 'history' } as const, null as MinosHistory | null, { shape: 'history-1' })
+
+/** The project's latest sessions, read when the pane opens and at each turn's end. */
+const project = atom({ plugin: 'minos', key: 'project' } as const, [] as MinosSession[], { shape: 'project-1' })
 
 /** Appends undo notes for the pane, keeping the last 50. */
 export async function addNotes($: EngineInterface, added: string[]): Promise<void> {
@@ -49,6 +52,7 @@ const EMPTY: MinosLedger = {
   undone: [],
   caveats: [],
   empty: 'No changes yet.',
+  legend: [],
 }
 
 /** The `display` part of the ledger JSON, or null when the output does not read as one. */
@@ -91,6 +95,26 @@ async function refresh($: EngineInterface): Promise<void> {
   }
 }
 
+/** How many of the project's sessions the pane lists. */
+const PROJECT_SESSIONS = 6
+
+/**
+ * Reads the project's latest sessions for the pane. Each one is a whole
+ * transcript to read, so this runs when the pane opens and at a turn's end,
+ * never after each change. Never throws; on any failure the list stays as it was.
+ */
+async function readProject($: EngineInterface): Promise<void> {
+  try {
+    const cwd = await $.session.cwd()
+    const run = await minos($, ['sessions', '--json', '--limit', String(PROJECT_SESSIONS), '--project', cwd])
+    if (!run.ok) return
+    const parsed = JSON.parse(run.stdout) as { sessions?: MinosSession[] }
+    if (Array.isArray(parsed.sessions)) await update($, project, () => parsed.sessions as MinosSession[])
+  } catch {
+    // The project list is context, not the ledger: missing it must never disturb the pane.
+  }
+}
+
 /** Asks for a refresh once the session has been quiet for the debounce, but only while the pane is open. */
 export async function schedule($: EngineInterface): Promise<void> {
   try {
@@ -103,6 +127,13 @@ export async function schedule($: EngineInterface): Promise<void> {
   } catch {
     // A refresh is a convenience: failing to schedule one must never reach the tool call.
   }
+}
+
+/** Shows another session's ledger in the pane, as `minos ledger` prints it. */
+async function openSession($: EngineInterface, id: string): Promise<void> {
+  const cwd = await $.session.cwd().catch(() => '')
+  const run = await minos($, ['ledger', '--session', id, '--project', cwd])
+  await update($, history, () => ({ file: `session ${id.slice(0, 8)}`, text: run.ok ? run.stdout.trimEnd() : `Minos could not read that session: ${run.error}` }))
 }
 
 /** Shows one file's history in the pane, as `minos file` prints it. */
@@ -131,6 +162,7 @@ export function livePane(on: On): void {
     await update($, isOpen, () => true)
     await $.ui.open({ id: PANE, title: 'Minos' })
     void refresh($)
+    void readProject($)
     return { text: 'Minos pane opened.' }
   })
 
@@ -144,19 +176,21 @@ export function livePane(on: On): void {
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     await schedule($)
+    if (await read($, isOpen).catch(() => false)) void readProject($)
     return done
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
-    const [ledger, failed, raised, opened] = await Promise.all([read($, view), read($, error), read($, notes), read($, history)])
+    const [ledger, failed, raised, opened, earlier] = await Promise.all([read($, view), read($, error), read($, notes), read($, history), read($, project)])
     const room = Math.max(20, e.props.bodyColumns)
     if (failed !== null) return <Text wrap="truncate-end" color="error">Minos could not run: {failed}</Text>
     if (ledger === null) return <Text dimColor>Reading this session's ledger…</Text>
-    const press = (id: string) => (id === CLOSE_PRESS ? update($, history, () => null) : openHistory($, id.slice(FILE_PRESS.length)))
+    const press = (id: string) =>
+      id === CLOSE_PRESS ? update($, history, () => null) : id.startsWith(SESSION_PRESS) ? openSession($, id.slice(SESSION_PRESS.length)) : openHistory($, id.slice(FILE_PRESS.length))
     return (
       <Box flexDirection="column">
-        {paneRows(ledger, raised, opened, room).map((line) => (
+        {paneRows(ledger, raised, opened, room, earlier).map((line) => (
           <Box key={line.key} width={room} overflow="hidden">
             {line.segments.map((s) =>
               s.press === undefined ? (

@@ -14,10 +14,14 @@ export type MinosLedger = {
   undone: { shown: string; kind: string; verb: string; at: string; prompt: string; endedAt: string }[]
   caveats: string[]
   empty: string | null
+  legend: string[]
 }
 
-/** One file's history as `minos file` printed it, for the file the person opened. */
+/** One file's history, or another session's ledger, as the CLI printed it, for what the person opened. */
 export type MinosHistory = { file: string; text: string }
+
+/** An earlier session of this project, from `minos sessions --json`. */
+export type MinosSession = { id: string; short: string; first: string; last: string; counts: { decided: number; auto: number; subagent: number; undone: number } }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -32,6 +36,8 @@ declare module 'claude-code' {
       isOpen: Shaped<boolean>
       /** The file whose history the pane shows, or null. */
       history: Shaped<MinosHistory | null>
+      /** The project's latest sessions, newest last, read when the pane opens and at each turn's end. */
+      project: Shaped<MinosSession[]>
     }
   }
 }

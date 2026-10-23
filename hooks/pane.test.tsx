@@ -23,12 +23,15 @@ const DISPLAY = {
   undone: [{ shown: 'src/a.ts', kind: 'overwritten', verb: 'replaced', at: '18:51', prompt: 'prompt 2', endedAt: '18:58' }],
   caveats: [],
   empty: null,
+  legend: [],
 }
 const LEDGER_JSON = JSON.stringify({ text: 'unused by the pane', display: DISPLAY })
 
 /** A CLI stand-in: the ledger as JSON, a file's history, and no undo findings. */
 const cli = (run: Run) =>
-  run.argv[2] === 'ledger'
+  run.argv[2] === 'sessions'
+    ? { exitCode: 0, stdout: JSON.stringify({ sessions: [{ id: 'old-1', short: 'old-1', first: '2026-10-22 09:00', last: '2026-10-22 10:00', counts: { decided: 0, auto: 2, subagent: 0, undone: 0 } }] }) }
+    : run.argv[2] === 'ledger'
     ? { exitCode: 0, stdout: LEDGER_JSON }
     : run.argv[2] === 'file'
       ? { exitCode: 0, stdout: 'src/a.ts: 1 operation in this session\n' }
@@ -116,7 +119,7 @@ test('a refresh asked for while one runs causes exactly one more after it', asyn
   const held = new Promise<void>((r) => (release = r))
   // The first ledger run holds until released, so the later requests land while it runs.
   const { runs } = engine(on, async (run) => {
-    if (runs.length === 1) await held
+    if (run.argv[2] === 'ledger' && ledgerRuns(runs) === 1) await held
     return cli(run)
   })
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -141,5 +144,19 @@ test('a session with no transcript yet reads as No changes yet., not as a failur
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: /No changes yet/ }))?.text).toBe('No changes yet.')
   expect(await ui.find({ type: 'Text', text: /could not run/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the pane lists the earlier sessions of the project, and pressing one shows its ledger', async ($, on) => {
+  const { runs } = engine(on, cli)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const clock = mock.clock(on)
+  await start($)
+  await $.command.run(OPEN)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ key: 'session:old-1' })).toBeDefined()
+  await ui.press({ key: 'session:old-1' })
+  expect(runs.some((r) => r.argv[2] === 'ledger' && r.argv.includes('old-1'))).toBe(true)
   await ui.unmount()
 })
