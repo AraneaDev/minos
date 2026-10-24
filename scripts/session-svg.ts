@@ -15,10 +15,10 @@
  *
  * Usage: bun run scripts/session-svg.ts <transcript.jsonl> <session> <project> <out.svg> [file to open]
  */
-import { paneRows } from '../hooks/layout'
+import { fitWindows, paneRows } from '../hooks/layout'
 import type { Segment } from '../hooks/layout'
 import { cells, fit } from '../hooks/text'
-import type { MinosEdit, MinosHistory, MinosLedger, MinosSession } from '../types'
+import type { MinosEdit, MinosHead, MinosHistory, MinosLedger, MinosSession } from '../types'
 
 const GROUND = '#10151d'
 const BODY = '#b8c0cb'
@@ -36,6 +36,7 @@ const THEME: Record<string, string> = {
   subtle: FRAME,
   claude: CLAUDE,
   inactive: DIM,
+  text: BONE,
 }
 
 const FONT_SIZE = 13
@@ -175,7 +176,17 @@ const codeLines = (source: string): Line[] =>
           : { runs: [{ text: `    ${fit(l, PANE - 4)}` }] },
   )
 
-const pane: Line[] = paneRows(ledger, [], history, PANE, sessions)
+/** The header as the pane reads it: the project's name, and its branch and commit when git answers. */
+async function headOf(dir: string): Promise<MinosHead> {
+  const run = Bun.spawn(['git', '-C', dir, 'rev-parse', 'HEAD', '--abbrev-ref', 'HEAD'], { stdout: 'pipe', stderr: 'ignore' })
+  const [rev = '', branch = ''] = (await new Response(run.stdout).text()).trim().split('\n')
+  const git = (await run.exited) === 0 && rev !== '' ? { rev, branch: branch === 'HEAD' ? null : branch } : null
+  return { project: dir.split('/').filter((part) => part !== '').pop() ?? dir, git }
+}
+const where = await headOf(project)
+// The lists grown into the pane's rows, as the mod sizes them for a pane BODY_ROWS tall.
+const windows = fitWindows(BODY_ROWS, { files: 0, prompts: 0 }, ledger, [], history, PANE, sessions)
+const pane: Line[] = paneRows(ledger, [], history, PANE, sessions, false, false, windows, where)
   .flatMap((r): Line[] => (r.code === undefined ? [{ runs: r.segments }] : codeLines(r.code.source)))
   .slice(0, BODY_ROWS)
 
