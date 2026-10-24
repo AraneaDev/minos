@@ -31,12 +31,18 @@ export const SESSION_PRESS = 'session:'
 export const PROMPT_PRESS = 'prompt:'
 /** The press that shows every prompt, or folds the list back. */
 export const PROMPTS_PRESS = 'prompts:toggle'
-/** How many prompts the card lists before it folds the rest. */
+/** The fewest prompts the card lists before it folds the rest; a taller pane lists more. */
 export const PROMPTS_FOLDED = 6
 /** The press that shows every changed file, or folds the list back. */
 export const FILES_PRESS = 'files:toggle'
-/** How many changed files the card lists before it folds the rest behind a press. */
+/** The fewest changed files the card lists before it folds the rest behind a press; a taller pane lists more. */
 export const FILES_FOLDED = 10
+/** Which rows of one list a card shows: from the `from`th, `rows` of them. */
+export type Window = { from: number; rows: number }
+/** The windows over the changed files and the prompts, each at least its fold. */
+export type Windows = { files: Window; prompts: Window }
+/** The windows a pane too short to grow them shows: the first rows, up to each fold. */
+export const FOLDED: Windows = { files: { from: 0, rows: FILES_FOLDED }, prompts: { from: 0, rows: PROMPTS_FOLDED } }
 /** The press that closes an open file history. */
 export const CLOSE_PRESS = 'history:close'
 
@@ -152,6 +158,56 @@ function editRows(e: MinosEdit, i: number, room: number): Row[] {
   return [head, { key: `edit-${i}-diff`, segments: [], code: { source: e.diff, diff: e.numbered } }]
 }
 
+/** `w` kept inside a list of `n`: never past its end, never above its top. */
+export function within(w: Window, n: number): Window {
+  const rows = Math.max(0, Math.min(w.rows, n))
+  return { from: Math.max(0, Math.min(w.from, n - rows)), rows }
+}
+
+/** A folded list's last row: the press that shows it all or folds it back, and where the window stands. */
+function toggleRow(key: string, press: string, all: boolean, n: number, at: Window, room: number): Row {
+  const below = n - at.from - at.rows
+  const rest = all ? '' : at.from === 0 ? ` · ${below} more` : ` · ${at.from} above · ${below} below`
+  return row(key, [{ text: '  ' }, { text: all ? 'show fewer' : `show all ${n}`, dim: true, press }, { text: rest, dim: true }], room)
+}
+
+/**
+ * The windows that fill a pane `bodyRows` tall: the rows the folded pane
+ * leaves empty go to the changed files first, then to the prompts, so the
+ * lists grow before anything has to scroll. `from` is kept as given.
+ */
+export function fitWindows(bodyRows: number, from: { files: number; prompts: number }, ...args: Parameters<typeof paneRows>): Windows {
+  const [ledger, , , , , allFiles = false, allPrompts = false] = args
+  let spare = bodyRows - paneRows(...args).length
+  const grow = (n: number, fold: number, all: boolean): number => {
+    const base = Math.min(n, fold)
+    // A list shown whole already has its rows, and keeps its press to fold it back.
+    if (all || spare <= 0 || n <= base) return base
+    const rows = Math.min(n, base + spare)
+    // A list shown whole drops its toggle row, which the next list may take.
+    spare -= rows - base - (rows === n ? 1 : 0)
+    return rows
+  }
+  const files = grow(ledger.files.length, FILES_FOLDED, allFiles)
+  const prompts = grow(ledger.prompts.length, PROMPTS_FOLDED, allPrompts)
+  return { files: { from: from.files, rows: files }, prompts: { from: from.prompts, rows: prompts } }
+}
+
+/**
+ * Where a wheel tick `by` over the drawn row `at` moves a list: the list and
+ * its window's new first row, or null when that row is in no list, the list
+ * shows whole, or its window is already at that end, so the pane scrolls instead.
+ * `counts` holds each list's length, 0 for one shown whole.
+ */
+export function wheel(keys: string[], at: number, by: number, windows: Windows, counts: { files: number; prompts: number }): { list: keyof Windows; from: number } | null {
+  const key = keys[at] ?? ''
+  const list = key.startsWith('file:') || key === 'files-toggle' ? 'files' : key.startsWith('prompt-') || key === 'prompts-toggle' ? 'prompts' : null
+  if (list === null) return null
+  const now = within(windows[list], counts[list])
+  const from = within({ ...now, from: now.from + by }, counts[list]).from
+  return from === now.from ? null : { list, from }
+}
+
 /** Everything the pane shows, as rows `room` wide. */
 export function paneRows(
   ledger: MinosLedger,
@@ -161,6 +217,7 @@ export function paneRows(
   earlier: MinosSession[] = [],
   allFiles = false,
   allPrompts = false,
+  windows: Windows = FOLDED,
 ): Row[] {
   const tier = tierOf(room)
   const out: Row[] = []
@@ -198,21 +255,19 @@ export function paneRows(
     gap('files-gap')
     const n = ledger.files.length
     card('files-head', '≡', 'Changed without asking', `${n} ${n === 1 ? 'file' : 'files'} · press one for its history`)
-    // The most recent first; past FILES_FOLDED the rest wait behind a press, so a busy session cannot push every other card off the pane.
-    const shown = allFiles ? ledger.files : ledger.files.slice(0, FILES_FOLDED)
+    // The most recent first; past the window the rest wait behind a press or the wheel, so a busy session cannot push every other card off the pane.
+    const at = within(windows.files, n)
+    const shown = allFiles ? ledger.files : ledger.files.slice(at.from, at.from + at.rows)
     for (const f of shown) out.push(fileRow(f, room))
-    if (n > FILES_FOLDED) {
-      const label = allFiles ? 'show fewer' : `show all ${n}`
-      const rest = allFiles ? '' : ` · ${n - FILES_FOLDED} more`
-      out.push(row('files-toggle', [{ text: '  ' }, { text: label, dim: true, press: FILES_PRESS }, { text: rest, dim: true }], room))
-    }
+    if (n > at.rows) out.push(toggleRow('files-toggle', FILES_PRESS, allFiles, n, at, room))
   }
 
   if (ledger.prompts.length > 0) {
     gap('prompts-gap')
     const n = ledger.prompts.length
     card('prompts-head', '›', 'By prompt', `${n} ${n === 1 ? 'prompt' : 'prompts'} changed something · press one for its files`)
-    const shown = allPrompts ? ledger.prompts : ledger.prompts.slice(0, PROMPTS_FOLDED)
+    const at = within(windows.prompts, n)
+    const shown = allPrompts ? ledger.prompts : ledger.prompts.slice(at.from, at.from + at.rows)
     for (const p of shown) {
       const right: Segment[] = [{ text: p.summary, dim: true }]
       const lead: Segment[] = [{ text: '  ' }, { text: p.ref, press: `${PROMPT_PRESS}${p.ref}` }, { text: '  ' }]
@@ -220,9 +275,7 @@ export function paneRows(
       const said: Segment[] = room2 >= 8 ? [{ text: fit(p.text, room2) }, { text: spaces(room2 - cells(fit(p.text, room2)) + 2) }] : [{ text: '  ' }]
       out.push(row(`prompt-${p.ref}`, [...lead, ...said, ...right], room))
     }
-    if (n > PROMPTS_FOLDED) {
-      out.push(row('prompts-toggle', [{ text: '  ' }, { text: allPrompts ? 'show fewer' : `show all ${n}`, dim: true, press: PROMPTS_PRESS }, { text: allPrompts ? '' : ` · ${n - PROMPTS_FOLDED} more`, dim: true }], room))
-    }
+    if (n > at.rows) out.push(toggleRow('prompts-toggle', PROMPTS_PRESS, allPrompts, n, at, room))
   }
 
   if (history !== null) {

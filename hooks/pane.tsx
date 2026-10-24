@@ -2,8 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { MinosEdit, MinosHistory, MinosLedger, MinosSession } from '../types'
-import { CLOSE_PRESS, FILE_PRESS, FILES_PRESS, PROMPT_PRESS, PROMPTS_PRESS, SESSION_PRESS, paneRows } from './layout'
-import type { Segment } from './layout'
+import { CLOSE_PRESS, FILE_PRESS, FILES_PRESS, PROMPT_PRESS, PROMPTS_PRESS, SESSION_PRESS, fitWindows, paneRows, wheel } from './layout'
+import type { Segment, Windows } from './layout'
 import { forSession, minos } from './minos'
 
 /** The pane's id. */
@@ -25,11 +25,21 @@ const isOpen = atom({ plugin: 'minos', key: 'isOpen' } as const, false, { shape:
 /** The file whose history the person opened in the pane, and what `minos file` said about it. */
 const history = atom({ plugin: 'minos', key: 'history' } as const, null as MinosHistory | null, { shape: 'history-1' })
 
-/** Whether the prompts card lists every prompt, or folds them after the first six. */
+/** Whether the prompts card lists every prompt, or a window of them as tall as the pane allows. */
 const allPrompts = atom({ plugin: 'minos', key: 'allPrompts' } as const, false, { shape: 'all-prompts-1' })
 
-/** Whether the changed-files card lists every file, or folds them after the first ten. */
+/** Whether the changed-files card lists every file, or a window of them as tall as the pane allows. */
 const allFiles = atom({ plugin: 'minos', key: 'allFiles' } as const, false, { shape: 'all-files-1' })
+
+/** The first changed file and the first prompt each card's window shows, moved by the wheel over that list. */
+const listFrom = atom({ plugin: 'minos', key: 'listFrom' } as const, { files: 0, prompts: 0 }, { shape: 'list-from-1' })
+
+/**
+ * What the pane drew last, for the wheel to find the row under the pointer:
+ * the window's offset, each row's key, and the lists' windows. The module's
+ * own, so a reload forgets it until the next draw.
+ */
+let drawn: { offset: number; keys: string[]; windows: Windows; files: number; prompts: number } | null = null
 
 /** The project's latest sessions, read when the pane opens and at each turn's end. */
 const project = atom({ plugin: 'minos', key: 'project' } as const, [] as MinosSession[], { shape: 'project-1' })
@@ -210,9 +220,20 @@ export function livePane(on: On): void {
     return done
   })
 
+  // The wheel over a folded list moves that list's window; anywhere else, or
+  // at the list's top or end, the engine scrolls the pane's body as usual.
+  on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
+    const at = drawn
+    if (e.origin.kind !== 'person' || e.pointer === undefined || at === null) return next(e)
+    const moved = wheel(at.keys, at.offset + e.pointer.row, e.by, at.windows, at)
+    if (moved === null) return next(e)
+    await update($, listFrom, (from) => ({ ...from, [moved.list]: moved.from }))
+    return {}
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Code, Text } = $.ui.resolve(e)
-    const [ledger, failed, raised, opened, earlier, everyFile, everyPrompt] = await Promise.all([
+    const [ledger, failed, raised, opened, earlier, everyFile, everyPrompt, from] = await Promise.all([
       read($, view),
       read($, error),
       read($, notes),
@@ -220,6 +241,7 @@ export function livePane(on: On): void {
       read($, project),
       read($, allFiles),
       read($, allPrompts),
+      read($, listFrom),
     ])
     const room = Math.max(20, e.props.bodyColumns)
     if (failed !== null) return <Text wrap="truncate-end" color="error">Minos could not run: {failed}</Text>
@@ -232,9 +254,12 @@ export function livePane(on: On): void {
       if (id.startsWith(SESSION_PRESS)) return openSession($, id.slice(SESSION_PRESS.length))
       return openHistory($, id.slice(FILE_PRESS.length))
     }
+    const windows = fitWindows(e.props.scroll.bodyRows, from, ledger, raised, opened, room, earlier, everyFile, everyPrompt)
+    const rows = paneRows(ledger, raised, opened, room, earlier, everyFile, everyPrompt, windows)
+    drawn = { offset: e.props.scroll.offset, keys: rows.map((r) => r.key), windows, files: everyFile ? 0 : ledger.files.length, prompts: everyPrompt ? 0 : ledger.prompts.length }
     return (
       <Box flexDirection="column">
-        {paneRows(ledger, raised, opened, room, earlier, everyFile, everyPrompt).map((line) => (
+        {rows.map((line) => (
           line.code !== undefined ? (
             <Box key={line.key} width={room} overflow="hidden" paddingLeft={2}>
               {line.code.diff ? (
@@ -244,7 +269,8 @@ export function livePane(on: On): void {
               )}
             </Box>
           ) : (
-          <Box key={line.key} width={room} overflow="hidden">
+          // Every plain row is one line: held to it so a blank row (a card's margin) is never drawn as none.
+          <Box key={line.key} width={room} height={1} overflow="hidden">
             {line.segments.map((s) =>
               s.press === undefined ? (
                 <Text wrap="truncate-end" {...style(s)}>

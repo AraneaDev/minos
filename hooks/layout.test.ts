@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { paneRows, tierOf } from './layout'
+import { FOLDED, fitWindows, paneRows, tierOf, wheel } from './layout'
 import { cells, fitPath } from './text'
 import type { MinosLedger } from '../types'
 
@@ -128,4 +128,60 @@ test('an opened file shows each change as a header and a diff block for Claude C
   expect(head).toContain('21:33')
   expect(head).toContain('4 more lines not shown')
   expect(rows.find((r) => r.key === 'history-head')!.segments.map((s) => s.text).join('')).toContain('2 changes')
+})
+
+const MANY: MinosLedger = {
+  ...LEDGER,
+  files: Array.from({ length: 30 }, (_, i) => ({ file: `/repo/f${i}.ts`, shown: `f${i}.ts`, label: 'auto' as const, changes: '1 change' })),
+  prompts: Array.from({ length: 20 }, (_, i) => ({ ref: `prompt ${i + 1}`, text: `ask ${i + 1}`, summary: '1 file · 1 change', files: [`f${i}.ts`] })),
+}
+
+test('a tall pane grows the lists into the rows the folded pane leaves empty, files first', () => {
+  const folded = paneRows(MANY, [], null, 100).length
+  const windows = fitWindows(folded + 12, { files: 0, prompts: 0 }, MANY, [], null, 100)
+  expect(windows.files.rows).toBe(22)
+  expect(windows.prompts.rows).toBe(6)
+  expect(paneRows(MANY, [], null, 100, [], false, false, windows)).toHaveLength(folded + 12)
+})
+
+test('a list grown whole drops its toggle, and the row it frees goes to the next list', () => {
+  const folded = paneRows(MANY, [], null, 100).length
+  const windows = fitWindows(folded + 25, { files: 0, prompts: 0 }, MANY, [], null, 100)
+  expect(windows.files.rows).toBe(30)
+  expect(windows.prompts.rows).toBe(12)
+  const rows = paneRows(MANY, [], null, 100, [], false, false, windows)
+  expect(rows.some((r) => r.key === 'files-toggle')).toBe(false)
+  expect(rows).toHaveLength(folded + 25)
+})
+
+test('a pane shorter than the folded lists keeps them folded, and the pane scrolls', () => {
+  expect(fitWindows(10, { files: 0, prompts: 0 }, MANY, [], null, 100)).toEqual(FOLDED)
+})
+
+test('a list shown whole keeps its fold back, and takes none of the spare rows', () => {
+  const windows = fitWindows(500, { files: 0, prompts: 0 }, MANY, [], null, 100, [], true)
+  expect(windows.files.rows).toBe(10)
+  const rows = paneRows(MANY, [], null, 100, [], true, false, windows)
+  expect(rows.filter((r) => r.key.startsWith('file:'))).toHaveLength(30)
+  expect(rows.find((r) => r.key === 'files-toggle')!.segments.map((s) => s.text).join('')).toContain('show fewer')
+})
+
+test('a window scrolled down shows its rows and says how many lie above and below', () => {
+  const rows = paneRows(MANY, [], null, 100, [], false, false, { ...FOLDED, files: { from: 5, rows: 10 } })
+  expect(rows.filter((r) => r.key.startsWith('file:')).map((r) => r.key)).toEqual(Array.from({ length: 10 }, (_, i) => `file:/repo/f${i + 5}.ts`))
+  expect(rows.find((r) => r.key === 'files-toggle')!.segments.map((s) => s.text).join('')).toContain('show all 30 · 5 above · 15 below')
+})
+
+test('the wheel over a list moves its window, and stops at its ends so the pane scrolls instead', () => {
+  const keys = paneRows(MANY, [], null, 100).map((r) => r.key)
+  const file = keys.indexOf('file:/repo/f3.ts')
+  const prompt = keys.indexOf('prompt-prompt 2')
+  const counts = { files: 30, prompts: 20 }
+  expect(wheel(keys, file, 3, FOLDED, counts)).toEqual({ list: 'files', from: 3 })
+  expect(wheel(keys, prompt, 1, FOLDED, counts)).toEqual({ list: 'prompts', from: 1 })
+  expect(wheel(keys, file, -1, FOLDED, counts)).toBeNull()
+  expect(wheel(keys, file, 100, { ...FOLDED, files: { from: 20, rows: 10 } }, counts)).toBeNull()
+  expect(wheel(keys, file, 100, FOLDED, counts)).toEqual({ list: 'files', from: 20 })
+  expect(wheel(keys, keys.indexOf('head'), 1, FOLDED, counts)).toBeNull()
+  expect(wheel(keys, file, 1, FOLDED, { ...counts, files: 0 })).toBeNull()
 })
