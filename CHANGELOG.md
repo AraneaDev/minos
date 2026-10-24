@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.16](https://github.com/AraneaDev/minos/compare/v0.0.15...v0.0.16) (2026-10-24)
+
+
+### Fixes
+
+* **pane:** head the pane with the project, its branch and commit ([#32](https://github.com/AraneaDev/minos/issues/32)) ([6e5d2d9](https://github.com/AraneaDev/minos/commit/6e5d2d951fab13fb6a69dea71441a9a346b8c16a))
+
 ## [0.0.15](https://github.com/AraneaDev/minos/compare/v0.0.14...v0.0.15) (2026-10-24)
 
 
