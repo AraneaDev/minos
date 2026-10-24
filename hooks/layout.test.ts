@@ -185,3 +185,11 @@ test('the wheel over a list moves its window, and stops at its ends so the pane 
   expect(wheel(keys, keys.indexOf('head'), 1, FOLDED, counts)).toBeNull()
   expect(wheel(keys, file, 1, FOLDED, { ...counts, files: 0 })).toBeNull()
 })
+
+test('the header names the project and where its checkout stands, as the Knossos pane does', () => {
+  const text = (where: Parameters<typeof paneRows>[8]) => paneRows(LEDGER, [], null, 100, [], false, false, FOLDED, where)[0]!.segments.map((s) => s.text).join('').trimEnd()
+  expect(text({ project: 'minos', git: { branch: 'main', rev: '857857fdaa51' } })).toBe('minos  main · 857857f')
+  expect(text({ project: 'minos', git: { branch: null, rev: '857857fdaa51' } })).toBe('minos  @ 857857f')
+  expect(text({ project: 'minos', git: null })).toBe('minos')
+  expect(text(null)).toBe('Minos')
+})
