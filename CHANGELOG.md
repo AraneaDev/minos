@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.15](https://github.com/AraneaDev/minos/compare/v0.0.14...v0.0.15) (2026-10-24)
+
+
+### Fixes
+
+* **pane:** fill the pane's height and scroll its lists with the wheel ([#30](https://github.com/AraneaDev/minos/issues/30)) ([7a38e5b](https://github.com/AraneaDev/minos/commit/7a38e5bea20e4d857f0c5c11dd97df83fac91d5e))
+
 ## [0.0.14](https://github.com/AraneaDev/minos/compare/v0.0.13...v0.0.14) (2026-10-24)
 
 
