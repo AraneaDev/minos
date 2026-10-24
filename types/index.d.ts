@@ -46,10 +46,12 @@ declare module 'claude-code' {
       history: Shaped<MinosHistory | null>
       /** The project's latest sessions, newest last, read when the pane opens and at each turn's end. */
       project: Shaped<MinosSession[]>
-      /** Whether the changed-files card lists every file, or folds them after the first ten. */
+      /** Whether the changed-files card lists every file, or a window of them as tall as the pane allows. */
       allFiles: Shaped<boolean>
-      /** Whether the prompts card lists every prompt, or folds them after the first six. */
+      /** Whether the prompts card lists every prompt, or a window of them as tall as the pane allows. */
       allPrompts: Shaped<boolean>
+      /** The first changed file and the first prompt each card's window shows. */
+      listFrom: Shaped<{ files: number; prompts: number }>
     }
   }
 }
