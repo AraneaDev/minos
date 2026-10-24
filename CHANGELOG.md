@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.14](https://github.com/AraneaDev/minos/compare/v0.0.13...v0.0.14) (2026-10-24)
+
+
+### Fixes
+
+* **install:** set the hooks path only in a checkout of Minos itself ([#28](https://github.com/AraneaDev/minos/issues/28)) ([28a7f25](https://github.com/AraneaDev/minos/commit/28a7f254e27e3c88da628a06369e0ae06ff9074e))
+
 ## [0.0.13](https://github.com/AraneaDev/minos/compare/v0.0.12...v0.0.13) (2026-10-24)
 
 
