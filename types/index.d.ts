@@ -31,6 +31,9 @@ export type MinosHistory = { file: string; text: string; edits?: MinosEdit[] }
 /** An earlier session of this project, from `minos sessions --json`. */
 export type MinosSession = { id: string; short: string; first: string; last: string; counts: { decided: number; auto: number; subagent: number; undone: number } }
 
+/** Where the pane's header says the project stands: its name, and its branch (null when detached) and commit, or no git at all. */
+export type MinosHead = { project: string; git: { branch: string | null; rev: string } | null }
+
 declare module 'claude-code' {
   interface PluginState {
     minos: {
@@ -52,6 +55,8 @@ declare module 'claude-code' {
       allPrompts: Shaped<boolean>
       /** The first changed file and the first prompt each card's window shows. */
       listFrom: Shaped<{ files: number; prompts: number }>
+      /** The project's name, branch and commit for the header, read when the pane opens and at each turn's end. */
+      head: Shaped<MinosHead | null>
     }
   }
 }

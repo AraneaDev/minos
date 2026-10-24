@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { MinosEdit, MinosHistory, MinosLedger, MinosSession } from '../types'
-import { CLOSE_PRESS, FILE_PRESS, FILES_PRESS, PROMPT_PRESS, PROMPTS_PRESS, SESSION_PRESS, fitWindows, paneRows, wheel } from './layout'
+import type { MinosEdit, MinosHead, MinosHistory, MinosLedger, MinosSession } from '../types'
+import { CLOSE_PRESS, FILE_PRESS, FILES_PRESS, PROMPT_PRESS, PROMPTS_PRESS, SESSION_PRESS, FOLDED, fitWindows, paneRows, wheel } from './layout'
 import type { Segment, Windows } from './layout'
 import { forSession, minos } from './minos'
 
@@ -43,6 +43,9 @@ let drawn: { offset: number; keys: string[]; windows: Windows; files: number; pr
 
 /** The project's latest sessions, read when the pane opens and at each turn's end. */
 const project = atom({ plugin: 'minos', key: 'project' } as const, [] as MinosSession[], { shape: 'project-1' })
+
+/** The project's name, branch and commit the header shows, or null before the first read. */
+const head = atom({ plugin: 'minos', key: 'head' } as const, null as MinosHead | null, { shape: 'head-1' })
 
 /** Appends undo notes for the pane, keeping the last 50. */
 export async function addNotes($: EngineInterface, added: string[]): Promise<void> {
@@ -136,6 +139,25 @@ async function readProject($: EngineInterface): Promise<void> {
   }
 }
 
+/**
+ * Reads the project's name and where its checkout stands for the header:
+ * when the pane opens and at a turn's end (one may commit or switch
+ * branches), never in a render. A project git does not hold, or a git that
+ * fails, shows the name alone. Never throws.
+ */
+async function readHead($: EngineInterface): Promise<void> {
+  try {
+    const cwd = await $.session.cwd()
+    const project = cwd.split('/').filter((part) => part !== '').pop() ?? cwd
+    const run = await $.process.run(['git', '-C', cwd, 'rev-parse', 'HEAD', '--abbrev-ref', 'HEAD'], { timeoutMs: 5_000 }).catch(() => null)
+    const [rev = '', branch = ''] = run?.exitCode === 0 ? run.stdout.trim().split('\n') : []
+    const git = /^[0-9a-f]{7,}$/.test(rev) && branch !== '' ? { rev, branch: branch === 'HEAD' ? null : branch } : null
+    await update($, head, () => ({ project, git }))
+  } catch {
+    // The header is context: missing it must never disturb the pane.
+  }
+}
+
 /** Asks for a refresh once the session has been quiet for the debounce, but only while the pane is open. */
 export async function schedule($: EngineInterface): Promise<void> {
   try {
@@ -203,6 +225,7 @@ export function livePane(on: On): void {
     await $.ui.open({ id: PANE, title: 'Minos' })
     void refresh($)
     void readProject($)
+    void readHead($)
     return { text: 'Minos pane opened.' }
   })
 
@@ -216,7 +239,10 @@ export function livePane(on: On): void {
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     await schedule($)
-    if (await read($, isOpen).catch(() => false)) void readProject($)
+    if (await read($, isOpen).catch(() => false)) {
+      void readProject($)
+      void readHead($)
+    }
     return done
   })
 
@@ -233,7 +259,7 @@ export function livePane(on: On): void {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Code, Text } = $.ui.resolve(e)
-    const [ledger, failed, raised, opened, earlier, everyFile, everyPrompt, from] = await Promise.all([
+    const [ledger, failed, raised, opened, earlier, everyFile, everyPrompt, from, where] = await Promise.all([
       read($, view),
       read($, error),
       read($, notes),
@@ -242,6 +268,7 @@ export function livePane(on: On): void {
       read($, allFiles),
       read($, allPrompts),
       read($, listFrom),
+      read($, head),
     ])
     const room = Math.max(20, e.props.bodyColumns)
     if (failed !== null) return <Text wrap="truncate-end" color="error">Minos could not run: {failed}</Text>
@@ -254,8 +281,8 @@ export function livePane(on: On): void {
       if (id.startsWith(SESSION_PRESS)) return openSession($, id.slice(SESSION_PRESS.length))
       return openHistory($, id.slice(FILE_PRESS.length))
     }
-    const windows = fitWindows(e.props.scroll.bodyRows, from, ledger, raised, opened, room, earlier, everyFile, everyPrompt)
-    const rows = paneRows(ledger, raised, opened, room, earlier, everyFile, everyPrompt, windows)
+    const windows = fitWindows(e.props.scroll.bodyRows, from, ledger, raised, opened, room, earlier, everyFile, everyPrompt, FOLDED, where)
+    const rows = paneRows(ledger, raised, opened, room, earlier, everyFile, everyPrompt, windows, where)
     drawn = { offset: e.props.scroll.offset, keys: rows.map((r) => r.key), windows, files: everyFile ? 0 : ledger.files.length, prompts: everyPrompt ? 0 : ledger.prompts.length }
     return (
       <Box flexDirection="column">

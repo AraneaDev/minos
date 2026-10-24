@@ -5,7 +5,7 @@
  * pane's edge so nothing wraps or widens it. Pure: the words, numbers and
  * times all come from `minos ledger --json`; this only places them.
  */
-import type { MinosEdit, MinosHistory, MinosLedger, MinosSession } from '../types'
+import type { MinosEdit, MinosHead, MinosHistory, MinosLedger, MinosSession } from '../types'
 import { cells, fit, fitPath, spaces } from './text'
 
 /** One run of text in a row, how it is drawn, and the press it carries. */
@@ -218,6 +218,7 @@ export function paneRows(
   allFiles = false,
   allPrompts = false,
   windows: Windows = FOLDED,
+  where: MinosHead | null = null,
 ): Row[] {
   const tier = tierOf(room)
   const out: Row[] = []
@@ -227,11 +228,11 @@ export function paneRows(
     out.push(ruleRow(key, glyph, name, note, room))
     gap(`space:${key}`)
   }
+  // The project and where its checkout stands, as the Knossos pane heads itself: the name in bold, then branch and commit, dim.
+  const git = where?.git ?? null
   const head: Segment[] = [
-    { text: '± ', color: TITLE },
-    { text: 'Minos', bold: true },
-    ...(ledger.session === '' ? [] : [{ text: `  session ${ledger.session}`, dim: true }]),
-    ...(ledger.since === null ? [] : [{ text: ` · since ${ledger.since}`, dim: true }]),
+    { text: where?.project ?? 'Minos', bold: true },
+    ...(git === null ? [] : [{ text: `  ${git.branch === null ? '@ ' : `${git.branch} · `}${git.rev.slice(0, 7)}`, dim: true }]),
   ]
   out.push(row('head', head, room))
   gap('head-gap')

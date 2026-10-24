@@ -30,7 +30,9 @@ const LEDGER_JSON = JSON.stringify({ text: 'unused by the pane', display: DISPLA
 
 /** A CLI stand-in: the ledger as JSON, a file's history, and no undo findings. */
 const cli = (run: Run) =>
-  run.argv[2] === 'sessions'
+  run.argv[0] === 'git'
+    ? { exitCode: 0, stdout: '857857fdaa51da44adfc88b8194d7bf81e9ddbba\nmain\n' }
+    : run.argv[2] === 'sessions'
     ? { exitCode: 0, stdout: JSON.stringify({ sessions: [{ id: 'old-1', short: 'old-1', first: '2026-10-22 09:00', last: '2026-10-22 10:00', counts: { decided: 0, auto: 2, subagent: 0, undone: 0 } }] }) }
     : run.argv[2] === 'ledger' && run.argv.includes('old-1')
       ? { exitCode: 0, stdout: 'MINOS  ledger  session old-1  earlier session text\n' }
@@ -51,8 +53,9 @@ test('/minos opens the pane and it shows the ledger the CLI prints, on every sur
   await clock.settle()
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /session sess-1/ }))?.text).toContain('session sess-1')
-    expect((await ui.find({ type: 'Text', text: /since 2026-10-23 18:50/ }))).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: /^repo$/ }))?.text).toBe('repo')
+    expect((await ui.find({ type: 'Text', text: /main · 857857f/ }))?.text).toBe('  main · 857857f')
+    expect(await ui.find({ type: 'Text', text: /session sess-1/ })).toBeUndefined()
     expect((await ui.find({ key: 'file:/repo/src/a.ts' }))?.text).toContain('a.ts')
     expect(await ui.find({ type: 'Text', text: /· 1 change/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /replaced 18:58/ })).toBeDefined()
