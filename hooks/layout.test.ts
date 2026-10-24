@@ -187,9 +187,15 @@ test('the wheel over a list moves its window, and stops at its ends so the pane 
 })
 
 test('the header names the project and where its checkout stands, as the Knossos pane does', () => {
-  const text = (where: Parameters<typeof paneRows>[8]) => paneRows(LEDGER, [], null, 100, [], false, false, FOLDED, where)[0]!.segments.map((s) => s.text).join('').trimEnd()
-  expect(text({ project: 'minos', git: { branch: 'main', rev: '857857fdaa51' } })).toBe('minos  main · 857857f')
-  expect(text({ project: 'minos', git: { branch: null, rev: '857857fdaa51' } })).toBe('minos  @ 857857f')
-  expect(text({ project: 'minos', git: null })).toBe('minos')
-  expect(text(null)).toBe('Minos')
+  const text = (where: Parameters<typeof paneRows>[8], room = 100) => paneRows(LEDGER, [], null, room, [], false, false, FOLDED, where).find((r) => r.key === 'head')!.segments.map((s) => s.text).join('').trimEnd()
+  expect(text({ project: 'minos', git: { branch: 'main', rev: '857857fdaa51' } })).toBe('  minos  main · 857857f')
+  expect(text({ project: 'minos', git: { branch: null, rev: '857857fdaa51' } })).toBe('  minos  @ 857857f')
+  expect(text({ project: 'minos', git: null })).toBe('  minos')
+  expect(text(null)).toBe('  Minos')
+  expect(text(null, 60)).toBe(' Minos')
+})
+
+test('the header has a blank row above it (none on a narrow pane), and a rule below it', () => {
+  expect(paneRows(LEDGER, [], null, 100).slice(0, 5).map((r) => r.key)).toEqual(['head-top', 'head', 'head-end', 'head-rule', 'head-gap'])
+  expect(paneRows(LEDGER, [], null, 60)[0]!.key).toBe('head')
 })
