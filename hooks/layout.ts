@@ -165,6 +165,11 @@ export function paneRows(
   const tier = tierOf(room)
   const out: Row[] = []
   const gap = (key: string) => out.push(row(key, [], room))
+  /** A card's title rule, with a blank row below it before the card's content. */
+  const card = (key: string, glyph: string, name: string, note: string) => {
+    out.push(ruleRow(key, glyph, name, note, room))
+    gap(`space:${key}`)
+  }
   const head: Segment[] = [
     { text: '± ', color: TITLE },
     { text: 'Minos', bold: true },
@@ -180,7 +185,7 @@ export function paneRows(
     out.push(row('empty', [{ text: '  ' }, { text: ledger.empty, dim: true }], room))
     if (ledger.legend.length > 0) {
       gap('legend-gap')
-      out.push(ruleRow('legend-head', '◇', 'What the counts mean', '', room))
+      card('legend-head', '◇', 'What the counts mean', '')
       ledger.legend.forEach((line, i) => {
         const [word = '', ...rest] = line.split(/(?<=^\S+)\s+/)
         const hue = (HUE as Record<string, string>)[word]
@@ -192,7 +197,7 @@ export function paneRows(
   if (ledger.files.length > 0) {
     gap('files-gap')
     const n = ledger.files.length
-    out.push(ruleRow('files-head', '≡', 'Changed without asking', `${n} ${n === 1 ? 'file' : 'files'} · press one for its history`, room))
+    card('files-head', '≡', 'Changed without asking', `${n} ${n === 1 ? 'file' : 'files'} · press one for its history`)
     // The most recent first; past FILES_FOLDED the rest wait behind a press, so a busy session cannot push every other card off the pane.
     const shown = allFiles ? ledger.files : ledger.files.slice(0, FILES_FOLDED)
     for (const f of shown) out.push(fileRow(f, room))
@@ -206,7 +211,7 @@ export function paneRows(
   if (ledger.prompts.length > 0) {
     gap('prompts-gap')
     const n = ledger.prompts.length
-    out.push(ruleRow('prompts-head', '›', 'By prompt', `${n} ${n === 1 ? 'prompt' : 'prompts'} changed something · press one for its files`, room))
+    card('prompts-head', '›', 'By prompt', `${n} ${n === 1 ? 'prompt' : 'prompts'} changed something · press one for its files`)
     const shown = allPrompts ? ledger.prompts : ledger.prompts.slice(0, PROMPTS_FOLDED)
     for (const p of shown) {
       const right: Segment[] = [{ text: p.summary, dim: true }]
@@ -226,7 +231,7 @@ export function paneRows(
     const edits = history.edits ?? []
     const title = history.file.startsWith('session ') ? `Ledger of ${history.file}` : history.file.startsWith('prompt ') ? history.file : 'Edits'
     const note = edits.length > 0 ? `${edits.length} ${edits.length === 1 ? 'change' : 'changes'}` : ''
-    out.push(ruleRow('history-head', '◇', title, note, room))
+    card('history-head', '◇', title, note)
     out.push(row('history-close', [{ text: '  ' }, { text: '× close', dim: true, press: CLOSE_PRESS }], room))
     lines.forEach((l, i) => out.push(row(`history-${i}`, [{ text: `  ${l}` }], room)))
     edits.forEach((e, i) => out.push(...editRows(e, i, room)))
@@ -234,7 +239,7 @@ export function paneRows(
 
   if (ledger.undone.length > 0) {
     gap('undone-gap')
-    out.push(ruleRow('undone-head', '↻', 'Did not survive', `${ledger.undone.length}`, room))
+    card('undone-head', '↻', 'Did not survive', `${ledger.undone.length}`)
     ledger.undone.forEach((u, i) => {
       const { dir, name } = fitPath(u.shown, Math.max(4, Math.floor(room / 2)))
       out.push(row(`undone-${i}`, [{ text: '  ' }, { text: dir, dim: true }, { text: name }, { text: `  ${u.verb} ${u.endedAt}`, color: HUE.undone }, { text: ` · made ${u.at} (${u.prompt})`, dim: true }], room))
@@ -243,14 +248,14 @@ export function paneRows(
 
   if (notes.length > 0) {
     gap('notes-gap')
-    out.push(ruleRow('notes-head', '✎', 'Noted this session', `${notes.length}`, room))
+    card('notes-head', '✎', 'Noted this session', `${notes.length}`)
     notes.forEach((note, i) => out.push(row(`note-${i}`, [{ text: '  ' }, { text: '↻ ', color: HUE.undone }, { text: note.replace(/^Minos: this /, '') }], room)))
   }
 
   const others = earlier.filter((s) => s.short !== ledger.session).reverse()
   if (others.length > 0) {
     gap('project-gap')
-    out.push(ruleRow('project-head', '◷', 'This project', `${others.length} earlier ${others.length === 1 ? 'session' : 'sessions'} · press one for its ledger`, room))
+    card('project-head', '◷', 'This project', `${others.length} earlier ${others.length === 1 ? 'session' : 'sessions'} · press one for its ledger`)
     for (const s of others) {
       const c = s.counts
       const figures: Segment[] = (['decided', 'auto', 'subagent', 'undone'] as const).flatMap((k, i): Segment[] => [
