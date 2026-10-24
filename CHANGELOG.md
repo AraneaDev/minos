@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.13](https://github.com/AraneaDev/minos/compare/v0.0.12...v0.0.13) (2026-10-24)
+
+
+### Fixes
+
+* **pane:** leave a blank row below each card title ([#26](https://github.com/AraneaDev/minos/issues/26)) ([f4185ea](https://github.com/AraneaDev/minos/commit/f4185ea0f15c361e91427dd38d833fd9c501bdf2))
+
 ## [0.0.12](https://github.com/AraneaDev/minos/compare/v0.0.11...v0.0.12) (2026-10-23)
 
 
