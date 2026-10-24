@@ -12,7 +12,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/AraneaDev/minos?label=last%20commit)](https://github.com/AraneaDev/minos/commits/main)
 [![Conventional Commits](https://img.shields.io/badge/commits-conventional-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/)
 [![Status](https://img.shields.io/badge/status-pre--release-orange)](#status)
-[![Tests](https://img.shields.io/badge/tests-412%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-431%20passing-brightgreen)](#development)
 
 </div>
 
@@ -24,9 +24,10 @@
 > repository, and which of it was ever put in front of you.
 
 ![A Claude Code session with the Minos pane docked beside it: the chat on the left shows the
-prompts and the edits as they happen, and the pane on the right counts one file changed under auto,
-one inside a subagent and three changes that did not survive, lists the five prompts that changed
-something, and shows every change to src/checkout.ts as a diff](docs/images/session.svg)
+prompts and the edits as they happen, and the pane on the right, headed by the project, its branch
+and its commit, counts six changes applied without asking, two inside a subagent and three that did
+not survive, lists the two files and the five prompts that changed something, and shows every
+change to src/checkout.ts as a diff](docs/images/session.svg)
 
 Type `/minos` in Claude Code and a pane opens beside the chat. It shows what this session changed
 while the session runs: which changes were put to you as a decision, which were applied without
@@ -43,12 +44,49 @@ Nothing is captured while you work: the live view's hooks read only the transcri
 already writes. Because that transcript is all Minos reads, it can also answer for sessions that
 happened before you installed it, for as long as Claude Code still keeps their transcripts.
 
+<a id="status"></a>
+
+> **Status:** pre-release. Minos is **not yet published to npm**, so it installs from the Aranea
+> marketplace or from this repository: see [Install](#install).
+
+---
+
+## Install
+
+In Claude Code, as a plugin, which is where `/minos` and `/minos:report` come from:
+
+<!-- aranea-install:start -->
+Install from the Aranea marketplace:
+
+```sh
+claude plugin marketplace add https://github.com/AraneaDev/aranea-marketplace
+claude plugin install minos@aranea
+```
+<!-- aranea-install:end -->
+
+On the command line, from this repository, since Minos is not on npm yet:
+
+```bash
+bun install -g github:AraneaDev/minos
+minos report
+```
+
+Nothing has to be installed before the session you want to read. Minos runs against the
+transcript store as it stands, so it answers for sessions that happened weeks earlier.
+
+Minos needs [Bun](https://bun.sh/) 1.1.0 or newer, and a Claude Code transcript store at
+`~/.claude/projects`, or wherever `CLAUDE_CONFIG_DIR` points. The pane and the agent's tool need
+Claude Code 2.1.309 or newer.
+
 ## Live in a session
 
-- `/minos` opens the pane. A band of tiles counts the decided, auto, subagent and undone
-  changes. Under it are the files changed without you being asked, the prompts that changed
-  something, the changes that did not survive, and this repository's earlier sessions. It
-  refreshes after each change and at the end of each turn while it is open.
+- `/minos` opens the pane. Its header names the project, its branch and its commit. A band of
+  tiles counts the decided, auto, subagent and undone changes. Under it are the files changed
+  without you being asked, the prompts that changed something, the changes that did not survive,
+  and this repository's earlier sessions. It refreshes after each change and at the end of each
+  turn while it is open.
+- The lists of files and prompts grow to fill the pane. A longer list scrolls with the mouse wheel
+  over it, or opens in full with `show all`.
 - Press a file and the pane shows each of its changes as a diff, drawn by Claude Code's own diff
   view, with the time, the class and the prompt behind it. Press a prompt to see the files it
   changed, or an earlier session to see its ledger.
@@ -60,8 +98,8 @@ happened before you installed it, for as long as Claude Code still keeps their t
   ever blocked. The check covers Edit and Write, not NotebookEdit, and it gives up after 1.5
   seconds, so on a transcript of hundreds of megabytes the line can be missing.
 
-All three ask the CLI and show what it prints, so the pane and the tool use the same counts and
-wording as `minos report`. The pane can trail the transcript by a second or so after a change.
+The pane, the tool and the undo line all ask the CLI and show what it prints, so they use the same
+counts and wording as `minos report`. The pane can trail the transcript by a second or so after a change.
 They need Claude Code 2.1.309 or newer, which runs a plugin's hooks module. On an older version
 the CLI and `/minos:report` work as before.
 
@@ -78,15 +116,6 @@ Minos reporting on a staged demo session. Times are in the timezone Minos runs i
 the transcript's UTC, and a `+1d` marks a time that falls on the calendar day after the session
 began.
 
-<a id="status"></a>
-
-> **Status:** pre-release. Minos is **not yet published to npm**, so it installs from this
-> repository or from the aranea marketplace: see [Install](#install). It requires
-> [Bun](https://bun.sh/) 1.1 or newer and a Claude Code transcript store at
-> `~/.claude/projects`.
-
----
-
 ## What it will not tell you
 
 Minos reports whether Claude Code **put a change to you as a decision**. It does not report
@@ -100,17 +129,6 @@ you ran it.
 
 That line matters more than any feature below it. A tool that implies it knows what your eyes did
 is worth less than one that says plainly where its knowledge stops.
-
-## Why it exists
-
-Every other tool in this collection checks an artefact that was already there. Knossos maps the
-architecture, Chaos attacks the test suite, Momus reads what the assertions actually assert, Argos
-draws a line around the database. None of them measures the session's own output, which is both the
-least reviewed artefact in the workflow and the one the agent produces.
-
-Git does not close that gap. It shows you the final state of the tree and nothing about how it got
-there: not which changes you were asked about, not which arrived unannounced, and not the work that
-was done and then undone before you ever saw it.
 
 ## The three classes
 
@@ -200,27 +218,31 @@ project moved on disk, the first line reads `recorded under N paths:` followed b
 the sessions under all of them are listed together. A project is found when any of its transcripts
 records the directory, so a moved repository is not reported as having no transcript.
 
+### Across every project
+
 `minos sessions --all` and `minos export --all` cover every project under `~/.claude/projects`.
 They count changes the same way, so a forked or resumed session does not count the same call twice.
-A project whose every recorded directory is under the temp directory (the system one, and `/tmp`)
-is left out by default, since that is where test runs and agent scratchpads live, and a line counts
-the projects skipped. `--include-temp` lists them. `--exclude <glob>` leaves out a project whose
-every recorded directory matches the glob, and a line counts those too. A long project path is cut
-in the middle, so the row keeps both where it lives and which checkout it is. Auto is broken down
-per recorded permission mode, and a line says how many duplicates were dropped. A history line gives
-the oldest and newest transcript, and the project directories that have no transcripts left. Claude
-Code prunes old transcripts (`cleanupPeriodDays`), so `--all` only covers what has not been pruned
-yet, and the totals will shrink as that happens. A project with no session in the window gets no
-row, and one line under the table counts those projects instead. With no window, that line counts
-the projects that had no session with a known time. An Edit or Write whose tool call failed or was
-refused wrote nothing, so it is left out of every count, here and in the single-session views, and
-a line says how many. A separate line counts shell commands that look like file writes. A command
-is left out of it only when it never ran: a permission denial, a `PreToolUse` hook block, a
-classifier refusal or missing verdict, or a user rejection. A command that ran and exited non-zero
-(`Exit code N`) stays in, since it may have written before it failed. It is a loose heuristic, and
-those commands are never counted in the classes.
 
-In Claude Code, `/minos:report` prints the report for the session you are in.
+- **Left out by default:** a project whose every recorded directory is under the temp directory
+  (the system one, and `/tmp`), since that is where test runs and agent scratchpads live.
+  `--include-temp` lists them. `--exclude <glob>` leaves out a project whose every recorded
+  directory matches the glob. A line counts the projects skipped either way.
+- **Rows:** a long project path is cut in the middle, so the row keeps both where it lives and
+  which checkout it is. A project with no session in the window gets no row; one line under the
+  table counts those projects instead. With no window, that line counts the projects that had no
+  session with a known time.
+- **Lines under the table:** auto per recorded permission mode, how many duplicates were dropped,
+  and a history line with the oldest and newest transcript and the project directories that have
+  no transcripts left.
+- **Pruning:** Claude Code prunes old transcripts (`cleanupPeriodDays`), so `--all` only covers
+  what has not been pruned yet, and the totals will shrink as that happens.
+- **Failed calls:** an Edit or Write whose tool call failed or was refused wrote nothing, so it is
+  left out of every count, here and in the single-session views, and a line says how many.
+- **Shell writes:** a separate line counts shell commands that look like file writes. A command is
+  left out of it only when it never ran: a permission denial, a `PreToolUse` hook block, a
+  classifier refusal or missing verdict, or a user rejection. A command that ran and exited
+  non-zero (`Exit code N`) stays in, since it may have written before it failed. It is a loose
+  heuristic, and those commands are never counted in the classes.
 
 ## What it does not do
 
@@ -231,33 +253,16 @@ In Claude Code, `/minos:report` prints the report for the session you are in.
   apply a change without showing it, and nothing else.
 - It makes no network request, runs no daemon, and sends no telemetry.
 
-## Install
+## Why it exists
 
-In Claude Code, as a plugin, which is where `/minos` and `/minos:report` come from:
+Every other tool in this collection checks an artefact that was already there. Knossos maps the
+architecture, Chaos attacks the test suite, Momus reads what the assertions actually assert, Argos
+draws a line around the database. None of them measures the session's own output, which is both the
+least reviewed artefact in the workflow and the one the agent produces.
 
-<!-- aranea-install:start -->
-Install from the Aranea marketplace:
-
-```sh
-claude plugin marketplace add https://github.com/AraneaDev/aranea-marketplace
-claude plugin install minos@aranea
-```
-<!-- aranea-install:end -->
-
-On the command line, from this repository, since Minos is not on npm yet:
-
-```bash
-bun install -g github:AraneaDev/minos
-minos report
-```
-
-Nothing has to be installed before the session you want to read. Minos runs against the
-transcript store as it stands, so it answers for sessions that happened weeks earlier.
-
-## Requirements
-
-Bun 1.1.0 or newer, and a Claude Code transcript store at `~/.claude/projects`, or wherever
-`CLAUDE_CONFIG_DIR` points.
+Git does not close that gap. It shows you the final state of the tree and nothing about how it got
+there: not which changes you were asked about, not which arrived unannounced, and not the work that
+was done and then undone before you ever saw it.
 
 ## Development
 
