@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.17](https://github.com/AraneaDev/minos/compare/v0.0.16...v0.0.17) (2026-10-24)
+
+
+### Fixes
+
+* **pane:** space and style the header as the Knossos pane does ([#34](https://github.com/AraneaDev/minos/issues/34)) ([c081d4f](https://github.com/AraneaDev/minos/commit/c081d4f46e4af301e0cafc21c42ab9cbe12d32b4))
+
 ## [0.0.16](https://github.com/AraneaDev/minos/compare/v0.0.15...v0.0.16) (2026-10-24)
 
 
