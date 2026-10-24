@@ -204,11 +204,13 @@ async function openPrompt($: EngineInterface, ref: string): Promise<void> {
   await update($, history, () => ({ file: ref, text: [prompt.text, prompt.summary, '', ...prompt.files].join('\n') }))
 }
 
+/** Secondary text: what the layout marks dim, in the theme's inactive colour as Knossos draws it, never the terminal's dim, whose reset also ends a bold beside it. */
+const SECONDARY = 'inactive'
+
 /** A plain segment's text style. */
 const style = (s: Segment) => ({
-  ...(s.color === undefined ? {} : { color: s.color }),
+  ...(s.color !== undefined ? { color: s.color } : s.dim === true ? { color: SECONDARY } : {}),
   ...(s.bold === true ? { bold: true } : {}),
-  ...(s.dim === true ? { dimColor: true } : {}),
   ...(s.italic === true ? { italic: true } : {}),
 })
 
@@ -272,7 +274,7 @@ export function livePane(on: On): void {
     ])
     const room = Math.max(20, e.props.bodyColumns)
     if (failed !== null) return <Text wrap="truncate-end" color="error">Minos could not run: {failed}</Text>
-    if (ledger === null) return <Text dimColor>Reading this session's ledger…</Text>
+    if (ledger === null) return <Text color={SECONDARY}>Reading this session's ledger…</Text>
     const press = async (id: string): Promise<unknown> => {
       if (id === FILES_PRESS) return update($, allFiles, (all) => !all)
       if (id === PROMPTS_PRESS) return update($, allPrompts, (all) => !all)

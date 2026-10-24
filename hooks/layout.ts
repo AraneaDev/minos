@@ -16,6 +16,8 @@ export type Row = { key: string; segments: Segment[]; code?: { source: string; d
 /** How much room the pane has: below 80 columns the tiles fold into one line. */
 export type Tier = 'narrow' | 'medium' | 'wide'
 
+/** Headings: the project's name, in the theme's own text colour, as Knossos draws its own. */
+const HEADING = 'text'
 /** Frames and rules. */
 const FRAME = 'subtle'
 /** A card's glyph. */
@@ -228,13 +230,19 @@ export function paneRows(
     out.push(ruleRow(key, glyph, name, note, room))
     gap(`space:${key}`)
   }
-  // The project and where its checkout stands, as the Knossos pane heads itself: the name in bold, then branch and commit, dim.
+  // The project and where its checkout stands, as the Knossos pane heads itself: a blank row above
+  // (none when narrow), then, set in from the edge, the name in bold and the branch and commit, dim.
   const git = where?.git ?? null
   const head: Segment[] = [
-    { text: where?.project ?? 'Minos', bold: true },
+    { text: spaces(tier === 'narrow' ? 1 : 2) },
+    { text: where?.project ?? 'Minos', bold: true, color: HEADING },
     ...(git === null ? [] : [{ text: `  ${git.branch === null ? '@ ' : `${git.branch} · `}${git.rev.slice(0, 7)}`, dim: true }]),
   ]
+  if (tier !== 'narrow') gap('head-top')
   out.push(row('head', head, room))
+  // Below the header a blank row and a rule across the pane, as Knossos closes its own, then room before the tiles.
+  gap('head-end')
+  out.push({ key: 'head-rule', segments: [{ text: '─'.repeat(room), color: FRAME }] })
   gap('head-gap')
   out.push(...tileRows(ledger.counts, room, tier))
 
