@@ -187,3 +187,29 @@ test('the pane lists the earlier sessions of the project, and pressing one shows
   expect(await ui.find({ type: 'Text', text: /earlier session text/ })).toBeDefined()
   await ui.unmount()
 })
+
+test('/minos opens the pane transparent, on the terminal background as the chat is', async ($, on) => {
+  engine(on, cli)
+  const backgrounds: (string | undefined)[] = []
+  on('ui.open', (_$, e) => {
+    backgrounds.push((e as { backgroundColor?: string }).backgroundColor)
+    return { value: { isPlaced: true } }
+  })
+  await start($)
+  await $.command.run(OPEN)
+  expect(backgrounds).toEqual(['transparent'])
+})
+
+test('a Claude Code that refuses backgroundColor still opens the pane, on its own fill', async ($, on) => {
+  engine(on, cli)
+  const backgrounds: (string | undefined)[] = []
+  on('ui.open', (_$, e) => {
+    const background = (e as { backgroundColor?: string }).backgroundColor
+    if (background !== undefined) return { deny: 'unknown option backgroundColor' }
+    backgrounds.push(background)
+    return { value: { isPlaced: true } }
+  })
+  await start($)
+  expect(JSON.stringify(await $.command.run(OPEN))).toContain('Minos pane opened.')
+  expect(backgrounds).toEqual([undefined])
+})
