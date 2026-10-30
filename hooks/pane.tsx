@@ -224,7 +224,9 @@ const style = (s: Segment) => ({
 export function livePane(on: On): void {
   on('command.run', { command: COMMAND }, async ($) => {
     await update($, isOpen, () => true)
-    await $.ui.open({ id: PANE, title: 'Minos' })
+    // Transparent: the pane lies on the terminal's own background, as the chat beside it does.
+    // A Claude Code from before `backgroundColor` refuses it, and gets the pane on its own fill.
+    await $.ui.open({ id: PANE, title: 'Minos', backgroundColor: 'transparent' }).catch(() => $.ui.open({ id: PANE, title: 'Minos' }))
     void refresh($)
     void readProject($)
     void readHead($)
