@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.18](https://github.com/AraneaDev/minos/compare/v0.0.17...v0.0.18) (2026-10-30)
+
+
+### Fixes
+
+* **pane:** open the pane transparent, as the Knossos pane does ([#37](https://github.com/AraneaDev/minos/issues/37)) ([e5e29cb](https://github.com/AraneaDev/minos/commit/e5e29cb6cf0b91c6c8b0f4d5d20980ed3f36b973))
+
 ## [0.0.17](https://github.com/AraneaDev/minos/compare/v0.0.16...v0.0.17) (2026-10-24)
 
 
