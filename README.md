@@ -6,7 +6,7 @@
 **Minos separates the changes you were asked about from the ones that were not.**
 
 [![Release](https://img.shields.io/github/v/release/AraneaDev/minos?label=release&include_prereleases)](https://github.com/AraneaDev/minos/releases)
-[![Tool page](https://img.shields.io/badge/tool%20page-aranea.dev-0b7285)](https://aranea.dev/en/tools/minos)
+[![Tool page](https://img.shields.io/badge/tool%20page-aranea.dev-0b7285)](https://aranea.dev/tools/minos)
 [![License](https://img.shields.io/github/license/AraneaDev/minos?label=license&color=yellow)](./LICENSE)
 [![Language](https://img.shields.io/github/languages/top/AraneaDev/minos)](https://github.com/AraneaDev/minos)
 [![Last commit](https://img.shields.io/github/last-commit/AraneaDev/minos?label=last%20commit)](https://github.com/AraneaDev/minos/commits/main)
